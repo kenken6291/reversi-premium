@@ -610,7 +610,7 @@ body.theme-neon .btn-primary {
     transform: rotateY(180deg);
 }
 
-.disc-container.new-placement {
+.disc-wrapper.new-placement {
     animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.2) forwards;
 }
 

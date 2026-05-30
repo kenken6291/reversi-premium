@@ -578,7 +578,7 @@ function renderBoard() {
                                    gameRecord[gameRecord.length - 1].r === r && 
                                    gameRecord[gameRecord.length - 1].c === c;
                 if (isLastMove && !replayMode) {
-                    container.classList.add('new-placement');
+                    wrapper.classList.add('new-placement');
                 }
                 
                 const blackFace = document.createElement('div');
