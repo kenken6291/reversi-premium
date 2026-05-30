@@ -32,6 +32,7 @@
                 <select id="game-mode" class="custom-select">
                     <option value="pvp">ローカル2人対戦</option>
                     <option value="pve" selected>VS コンピュータ (AI)</option>
+                    <option value="online">オンライン対戦 (対人)</option>
                 </select>
             </div>
 
@@ -60,6 +61,41 @@
                     <option value="neon">サイバーネオン</option>
                     <option value="wood">フォレストウッド</option>
                 </select>
+            </div>
+
+            <!-- オンラインルーム管理パネル -->
+            <div class="control-group hidden" id="online-room-group">
+                <label>オンライン対戦ルーム</label>
+                <div class="online-setup-box glass-panel">
+                    <!-- ルーム未作成・未参加時の表示 -->
+                    <div id="online-init-view">
+                        <button id="btn-create-room" class="btn btn-secondary btn-full">新しい部屋を作る</button>
+                        <div class="room-join-input-group">
+                            <input type="text" id="input-room-id" placeholder="ルームIDを入力" class="custom-select" maxlength="6">
+                            <button id="btn-join-room" class="btn btn-primary">入室</button>
+                        </div>
+                    </div>
+                    <!-- ルーム作成後（待機中）の表示 -->
+                    <div id="online-waiting-view" class="hidden">
+                        <p class="waiting-message">対戦相手を待っています...</p>
+                        <div class="room-id-display-box">
+                            <span class="room-id-label">ID:</span>
+                            <span id="display-room-id" class="room-id-value">------</span>
+                            <button id="btn-copy-room" class="btn-icon" title="ルームIDをコピー">
+                                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            </button>
+                        </div>
+                        <button id="btn-cancel-room" class="btn btn-secondary btn-danger">キャンセル</button>
+                    </div>
+                    <!-- ルーム接続中の表示 -->
+                    <div id="online-active-view" class="hidden">
+                        <div class="connection-status-box">
+                            <span class="status-dot green"></span>
+                            <span id="online-status-text">対戦中...</span>
+                        </div>
+                        <button id="btn-leave-room" class="btn btn-secondary btn-danger btn-full">退出する</button>
+                    </div>
+                </div>
             </div>
 
             <div class="divider"></div>
@@ -186,6 +222,7 @@
                 <div class="stats-tabs">
                     <button class="tab-btn active" data-tab="pvp-stats">対人戦</button>
                     <button class="tab-btn" data-tab="pve-stats">対AI戦</button>
+                    <button class="tab-btn" data-tab="online-stats">オンライン戦</button>
                 </div>
                 
                 <div class="tab-content" id="pvp-stats">
@@ -209,6 +246,17 @@
                         </tbody>
                     </table>
                 </div>
+
+                <div class="tab-content hidden" id="online-stats">
+                    <table class="stats-table">
+                        <tbody>
+                            <tr><td>総対戦数</td><td id="stat-online-total">0</td></tr>
+                            <tr><td>勝利</td><td id="stat-online-wins">0</td></tr>
+                            <tr><td>敗北</td><td id="stat-online-losses">0</td></tr>
+                            <tr><td>引き分け</td><td id="stat-online-draws">0</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
             <div class="modal-footer">
                 <button id="btn-clear-stats" class="btn btn-secondary btn-danger">成績データをリセット</button>
@@ -220,6 +268,10 @@
     <footer class="app-footer">
         <p>&copy; 2026 Reversi Premium. Built with modern web standards.</p>
     </footer>
+
+    <!-- Firebase App & Database Compat SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
 
     <!-- App Script -->
     <script src="app.js"></script>

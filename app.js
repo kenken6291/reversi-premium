@@ -2,6 +2,18 @@
  * Reversi Premium - Game Logic & UI Orchestrator
  */
 
+// --- Firebase Config (ユーザー設定エリア) ---
+// ※FIREBASE_SETUP.mdに従い、コピーした設定オブジェクトをここに貼り付けてください。
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+    projectId: "YOUR_PROJECT",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+};
+
 // --- Constants ---
 const EMPTY = 0;
 const BLACK = 1; // Player 1 (Classic starting)
@@ -75,6 +87,11 @@ class SoundSynth {
         this.playTone(600, 'sine', 0.08, 0.1, 0.08);
     }
 
+    playPlaceSoundOnline() {
+        // High click sound for opponent moves
+        this.playTone(300, 'sine', 0.08, 0.5);
+    }
+
     playPassSound() {
         // Warning sound
         this.playTone(220, 'sawtooth', 0.2, 0.2);
@@ -107,7 +124,7 @@ const synth = new SoundSynth();
 // --- Game State Variables ---
 let board = Array(8).fill(null).map(() => Array(8).fill(EMPTY));
 let turn = BLACK;
-let gameMode = 'pve'; // 'pvp' or 'pve'
+let gameMode = 'pve'; // 'pvp', 'pve', or 'online'
 let aiDifficulty = 'medium'; // 'easy', 'medium', 'hard'
 let playerColor = BLACK; // Black in AI game by default
 let gameActive = true;
@@ -117,6 +134,14 @@ let replayMode = false;
 let replayIndex = -1;
 let replayTimer = null;
 
+// Firebase Online Multiplayer States
+let database = null;
+let roomRef = null;
+let roomId = null;
+let myRole = null; // BLACK or WHITE
+let isOnlineActive = false; // true when matched and playing
+let oppConnected = false;
+
 // Timer properties
 let timerInterval = null;
 let timerBlack = 0;
@@ -125,7 +150,8 @@ let timerWhite = 0;
 // Local stats structure
 let gameStats = {
     pvp: { total: 0, blackWins: 0, whiteWins: 0, draws: 0 },
-    pve: { total: 0, playerWins: 0, aiWins: 0, draws: 0 }
+    pve: { total: 0, playerWins: 0, aiWins: 0, draws: 0 },
+    online: { total: 0, wins: 0, losses: 0, draws: 0 }
 };
 
 // --- DOM Elements ---
@@ -151,6 +177,19 @@ const btnHistory = document.getElementById('btn-history');
 const btnMute = document.getElementById('btn-mute');
 const svgSoundOn = document.getElementById('svg-sound-on');
 const svgSoundOff = document.getElementById('svg-sound-off');
+
+// Online DOM Elements
+const onlineRoomGroup = document.getElementById('online-room-group');
+const onlineInitView = document.getElementById('online-init-view');
+const onlineWaitingView = document.getElementById('online-waiting-view');
+const onlineActiveView = document.getElementById('online-active-view');
+const displayRoomId = document.getElementById('display-room-id');
+const inputRoomId = document.getElementById('input-room-id');
+const btnCreateRoom = document.getElementById('btn-create-room');
+const btnJoinRoom = document.getElementById('btn-join-room');
+const btnCopyRoom = document.getElementById('btn-copy-room');
+const btnCancelRoom = document.getElementById('btn-cancel-room');
+const btnLeaveRoom = document.getElementById('btn-leave-room');
 
 // Modals
 const resultModal = document.getElementById('result-modal');
@@ -225,13 +264,23 @@ function updateStatsDOM() {
     document.getElementById('stat-pve-player-wins').textContent = gameStats.pve.playerWins;
     document.getElementById('stat-pve-ai-wins').textContent = gameStats.pve.aiWins;
     document.getElementById('stat-pve-draws').textContent = gameStats.pve.draws;
+
+    // Online stats
+    if (!gameStats.online) {
+        gameStats.online = { total: 0, wins: 0, losses: 0, draws: 0 };
+    }
+    document.getElementById('stat-online-total').textContent = gameStats.online.total;
+    document.getElementById('stat-online-wins').textContent = gameStats.online.wins;
+    document.getElementById('stat-online-losses').textContent = gameStats.online.losses;
+    document.getElementById('stat-online-draws').textContent = gameStats.online.draws;
 }
 
 function clearStats() {
     if (confirm("すべての対戦成績データを削除してもよろしいですか？")) {
         gameStats = {
             pvp: { total: 0, blackWins: 0, whiteWins: 0, draws: 0 },
-            pve: { total: 0, playerWins: 0, aiWins: 0, draws: 0 }
+            pve: { total: 0, playerWins: 0, aiWins: 0, draws: 0 },
+            online: { total: 0, wins: 0, losses: 0, draws: 0 }
         };
         saveStats();
     }
@@ -242,6 +291,10 @@ function setupEventListeners() {
     // Buttons
     btnRestart.addEventListener('click', () => {
         synth.init();
+        if (gameMode === 'online') {
+            alert("オンライン対戦中は退出してからリセットしてください。");
+            return;
+        }
         resetGame();
     });
     btnUndo.addEventListener('click', () => {
@@ -255,6 +308,15 @@ function setupEventListeners() {
     
     // Select options changes
     selectGameMode.addEventListener('change', (e) => {
+        // If we are currently active in an online game, prevent change without confirmation
+        if (gameMode === 'online' && roomRef) {
+            if (!confirm("オンライン対戦中の部屋から退出しますか？")) {
+                selectGameMode.value = 'online';
+                return;
+            }
+            cleanUpOnlineRoom();
+        }
+
         gameMode = e.target.value;
         const aiGroup = document.getElementById('ai-difficulty-group');
         const colorGroup = document.getElementById('player-color-group');
@@ -262,11 +324,31 @@ function setupEventListeners() {
         if (gameMode === 'pvp') {
             aiGroup.classList.add('hidden');
             colorGroup.classList.add('hidden');
-        } else {
+            onlineRoomGroup.classList.add('hidden');
+            resetGame();
+        } else if (gameMode === 'pve') {
             aiGroup.classList.remove('hidden');
             colorGroup.classList.remove('hidden');
+            onlineRoomGroup.classList.add('hidden');
+            resetGame();
+        } else if (gameMode === 'online') {
+            aiGroup.classList.add('hidden');
+            colorGroup.classList.add('hidden');
+            
+            // Check Firebase config validity
+            if (!initFirebase()) {
+                alert("Firebase接続情報が設定されていません。FIREBASE_SETUP.md を読み、app.js の先頭で設定を行ってください。");
+                selectGameMode.value = 'pve';
+                gameMode = 'pve';
+                aiGroup.classList.remove('hidden');
+                colorGroup.classList.remove('hidden');
+                return;
+            }
+            
+            onlineRoomGroup.classList.remove('hidden');
+            showOnlineView('init');
+            resetGame(); // Init basic layout but don't start timer yet
         }
-        resetGame();
     });
     
     selectAiDifficulty.addEventListener('change', (e) => {
@@ -286,6 +368,10 @@ function setupEventListeners() {
     // Modal buttons
     btnModalRestart.addEventListener('click', () => {
         resultModal.classList.add('hidden');
+        if (gameMode === 'online') {
+            alert("対戦を新しく始めるには「退出する」を押して、新しくルームを作成・参加してください。");
+            return;
+        }
         resetGame();
     });
     btnModalClose.addEventListener('click', () => {
@@ -318,6 +404,20 @@ function setupEventListeners() {
     btnReplayPrev.addEventListener('click', () => replayStepTo(replayIndex - 1));
     btnReplayNext.addEventListener('click', () => replayStepTo(replayIndex + 1));
     btnReplayAuto.addEventListener('click', toggleReplayAuto);
+
+    // Online Multiplayer Buttons
+    btnCreateRoom.addEventListener('click', createOnlineRoom);
+    btnJoinRoom.addEventListener('click', () => {
+        const rId = inputRoomId.value.trim().toUpperCase();
+        if (rId.length !== 6) {
+            alert("正しい6桁のルームIDを入力してください。");
+            return;
+        }
+        joinOnlineRoom(rId);
+    });
+    btnCopyRoom.addEventListener('click', copyRoomIdToClipboard);
+    btnCancelRoom.addEventListener('click', cleanUpOnlineRoom);
+    btnLeaveRoom.addEventListener('click', cleanUpOnlineRoom);
 }
 
 function applyTheme(themeName) {
@@ -386,7 +486,9 @@ function resetGame() {
     if (gameMode === 'pvp') {
         nameBlackEl.textContent = 'プレイヤー1 (黒)';
         nameWhiteEl.textContent = 'プレイヤー2 (白)';
-    } else {
+        resetTimers();
+        startTimers();
+    } else if (gameMode === 'pve') {
         if (playerColor === BLACK) {
             nameBlackEl.textContent = 'あなた (黒)';
             nameWhiteEl.textContent = 'AI (白)';
@@ -394,12 +496,29 @@ function resetGame() {
             nameBlackEl.textContent = 'AI (黒)';
             nameWhiteEl.textContent = 'あなた (白)';
         }
+        resetTimers();
+        startTimers();
+    } else if (gameMode === 'online') {
+        // Online Mode Initialization
+        if (myRole === BLACK) {
+            nameBlackEl.textContent = 'あなた (黒)';
+            nameWhiteEl.textContent = oppConnected ? '対戦相手 (白)' : '待機中... (白)';
+        } else if (myRole === WHITE) {
+            nameBlackEl.textContent = '対戦相手 (黒)';
+            nameWhiteEl.textContent = 'あなた (白)';
+        } else {
+            nameBlackEl.textContent = 'プレイヤー1 (黒)';
+            nameWhiteEl.textContent = 'プレイヤー2 (白)';
+        }
+        
+        resetTimers();
+        if (isOnlineActive) {
+            startTimers();
+        }
     }
 
-    resetTimers();
     renderBoard();
     updateUI();
-    startTimers();
     
     // Trigger AI if it's AI's turn to start (if player chose White)
     if (gameMode === 'pve' && playerColor === WHITE) {
@@ -541,16 +660,33 @@ function handleCellClick(row, col) {
         return;
     }
     
+    // In Online mode, block clicks if not active or not my turn
+    if (gameMode === 'online') {
+        if (!isOnlineActive) {
+            alert("対戦相手を待っています...");
+            return;
+        }
+        if (turn !== myRole) {
+            return; // Not my turn
+        }
+    }
+    
     executeMove(row, col);
 }
 
-function executeMove(row, col) {
-    saveHistory();
+function executeMove(row, col, isFromOnlineSync = false) {
+    if (!isFromOnlineSync) {
+        saveHistory();
+    }
     
     const flippedDiscs = applyMove(board, row, col, turn);
     gameRecord.push({ r: row, c: col, t: turn });
     
-    synth.playPlaceSound();
+    if (isFromOnlineSync) {
+        synth.playPlaceSoundOnline();
+    } else {
+        synth.playPlaceSound();
+    }
     
     // Animate flip of adjacent discs
     renderBoard();
@@ -563,10 +699,32 @@ function executeMove(row, col) {
         }, 150);
     }
     
-    // Proceed to next turn
-    setTimeout(() => {
-        advanceTurn();
-    }, 600);
+    if (gameMode === 'online' && !isFromOnlineSync) {
+        // Send move to Firebase and let listener trigger advance
+        setTimeout(() => {
+            const nextTurnColor = turn === BLACK ? WHITE : BLACK;
+            const oppMoves = getValidMoves(board, nextTurnColor);
+            let targetNextTurn = nextTurnColor;
+            
+            if (oppMoves.length === 0) {
+                // Opponent must pass. Does current player have moves?
+                const myMoves = getValidMoves(board, turn);
+                if (myMoves.length === 0) {
+                    // Game Over
+                    targetNextTurn = EMPTY; // trigger end game state in firebase
+                } else {
+                    targetNextTurn = turn; // Pass turn back to me
+                }
+            }
+            
+            sendMoveToFirebase(row, col, targetNextTurn);
+        }, 500);
+    } else if (gameMode !== 'online') {
+        // Proceed to next turn locally
+        setTimeout(() => {
+            advanceTurn();
+        }, 600);
+    }
 }
 
 function advanceTurn() {
@@ -930,7 +1088,7 @@ function endGame() {
             gameStats.pvp.draws++;
             synth.playDrawSound();
         }
-    } else {
+    } else if (gameMode === 'pve') {
         finalNameBlackEl.textContent = playerColor === BLACK ? "あなた (黒)" : "AI (黒)";
         finalNameWhiteEl.textContent = playerColor === WHITE ? "あなた (白)" : "AI (白)";
         
@@ -946,6 +1104,27 @@ function endGame() {
         } else {
             winnerTextEl.textContent = "引き分け！";
             gameStats.pve.draws++;
+            synth.playDrawSound();
+        }
+    } else if (gameMode === 'online') {
+        finalNameBlackEl.textContent = myRole === BLACK ? "あなた (黒)" : "対戦相手 (黒)";
+        finalNameWhiteEl.textContent = myRole === WHITE ? "あなた (白)" : "対戦相手 (白)";
+        
+        if (!gameStats.online) {
+            gameStats.online = { total: 0, wins: 0, losses: 0, draws: 0 };
+        }
+        gameStats.online.total++;
+        if (winner === myRole) {
+            winnerTextEl.textContent = "あなたの勝利！";
+            gameStats.online.wins++;
+            synth.playWinSound();
+        } else if (winner !== null) {
+            winnerTextEl.textContent = "対戦相手の勝利！";
+            gameStats.online.losses++;
+            synth.playLoseSound();
+        } else {
+            winnerTextEl.textContent = "引き分け！";
+            gameStats.online.draws++;
             synth.playDrawSound();
         }
     }
@@ -1090,4 +1269,258 @@ function setReplayPlayIconState(isPlaying) {
         svgPlay.classList.remove('hidden');
         svgPause.classList.add('hidden');
     }
+}
+
+// --- Online Multiplayer Utility Functions ---
+
+function initFirebase() {
+    if (database) return true;
+    if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
+        return false;
+    }
+    try {
+        firebase.initializeApp(firebaseConfig);
+        database = firebase.database();
+        return true;
+    } catch (e) {
+        console.error("Firebase Initialization Failed", e);
+        return false;
+    }
+}
+
+function showOnlineView(viewType) {
+    onlineInitView.classList.add('hidden');
+    onlineWaitingView.classList.add('hidden');
+    onlineActiveView.classList.add('hidden');
+    
+    if (viewType === 'init') {
+        onlineInitView.classList.remove('hidden');
+    } else if (viewType === 'waiting') {
+        onlineWaitingView.classList.remove('hidden');
+    } else if (viewType === 'active') {
+        onlineActiveView.classList.remove('hidden');
+    }
+}
+
+function generateRoomId() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let result = '';
+    for (let i = 0; i < 6; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+}
+
+function createOnlineRoom() {
+    if (!initFirebase()) return;
+    
+    roomId = generateRoomId();
+    myRole = BLACK;
+    playerColor = BLACK;
+    oppConnected = false;
+    isOnlineActive = false;
+    
+    displayRoomId.textContent = roomId;
+    showOnlineView('waiting');
+    
+    // Create initial board state
+    const initialBoard = Array(8).fill(null).map(() => Array(8).fill(EMPTY));
+    initialBoard[3][3] = WHITE;
+    initialBoard[3][4] = BLACK;
+    initialBoard[4][3] = BLACK;
+    initialBoard[4][4] = WHITE;
+    
+    roomRef = database.ref(`rooms/${roomId}`);
+    
+    roomRef.set({
+        state: 'waiting',
+        board: initialBoard,
+        turn: BLACK,
+        blackActive: true,
+        whiteActive: false,
+        lastMove: null
+    }).then(() => {
+        // Set disconnect listener (remove room if host disconnects before playing)
+        roomRef.onDisconnect().remove();
+        listenToRoomChanges();
+    }).catch(err => {
+        alert("部屋の作成に失敗しました。");
+        cleanUpOnlineRoom();
+    });
+}
+
+function joinOnlineRoom(targetRoomId) {
+    if (!initFirebase()) return;
+    
+    roomId = targetRoomId;
+    myRole = WHITE;
+    playerColor = WHITE;
+    
+    database.ref(`rooms/${roomId}`).once('value').then(snapshot => {
+        const data = snapshot.val();
+        if (!data) {
+            alert("指定されたルームIDが存在しません。");
+            return;
+        }
+        if (data.whiteActive) {
+            alert("この部屋は既に満員です。");
+            return;
+        }
+        
+        roomRef = database.ref(`rooms/${roomId}`);
+        
+        // Update white player to active and change state to playing
+        roomRef.update({
+            whiteActive: true,
+            state: 'playing'
+        }).then(() => {
+            // Set disconnect listener
+            roomRef.child('whiteActive').onDisconnect().set(false);
+            isOnlineActive = true;
+            oppConnected = true;
+            showOnlineView('active');
+            listenToRoomChanges();
+        });
+    }).catch(err => {
+        alert("入室に失敗しました。");
+    });
+}
+
+function listenToRoomChanges() {
+    if (!roomRef) return;
+    
+    roomRef.on('value', snapshot => {
+        const data = snapshot.val();
+        if (!data) {
+            // Room was deleted
+            if (isOnlineActive && gameActive) {
+                handleOpponentLeave("対戦相手が退出、または切断されました。");
+            }
+            return;
+        }
+        
+        // If state changed to closed/opponent left
+        if (data.state === 'closed') {
+            handleOpponentLeave("対戦相手がゲームを退出しました。");
+            return;
+        }
+        
+        // Host waiting for opponent to join
+        if (myRole === BLACK && !isOnlineActive) {
+            if (data.whiteActive) {
+                // Opponent joined!
+                isOnlineActive = true;
+                oppConnected = true;
+                showOnlineView('active');
+                
+                // Keep room, but set onDisconnect to mark state as closed
+                roomRef.onDisconnect().update({ state: 'closed' });
+                
+                resetGame(); // This starts timers and updates player names
+            }
+        }
+        
+        // Synchronize board and turn
+        if (isOnlineActive) {
+            const incomingBoard = data.board;
+            const incomingTurn = data.turn;
+            
+            // Check if game ended via Firebase trigger (turn === EMPTY/0)
+            if (incomingTurn === EMPTY && gameActive) {
+                board = incomingBoard;
+                renderBoard();
+                endGame();
+                return;
+            }
+            
+            // Check if opponent made a move
+            if (incomingTurn !== turn) {
+                // If it's now our turn, play the opponent's move with animation
+                if (data.lastMove && data.lastMove.t !== (myRole === BLACK ? 'black' : 'white')) {
+                    board = data.board;
+                    turn = incomingTurn;
+                    
+                    // Reconstruct gameRecord up to this move to sync replay history
+                    gameRecord.push({ r: data.lastMove.r, c: data.lastMove.c, t: myRole === BLACK ? WHITE : BLACK });
+                    
+                    synth.playPlaceSoundOnline();
+                    renderBoard();
+                    updateUI();
+                    
+                    // Show flip animation
+                    setTimeout(() => {
+                        synth.playFlipSound();
+                    }, 150);
+                } else {
+                    // Turn or board sync
+                    board = incomingBoard;
+                    turn = incomingTurn;
+                    renderBoard();
+                    updateUI();
+                }
+            }
+        }
+    });
+}
+
+function sendMoveToFirebase(row, col, nextTurn) {
+    if (!roomRef) return;
+    
+    roomRef.update({
+        board: board,
+        turn: nextTurn,
+        lastMove: {
+            r: row,
+            c: col,
+            t: myRole === BLACK ? 'black' : 'white'
+        }
+    });
+}
+
+function cleanUpOnlineRoom() {
+    if (roomRef) {
+        if (myRole === BLACK) {
+            // Host removes the entire room
+            roomRef.remove();
+        } else {
+            // Guest marks themselves as inactive, causing host listener to notice
+            roomRef.update({
+                whiteActive: false,
+                state: 'closed'
+            });
+        }
+        roomRef.off();
+    }
+    
+    cleanUpOnlineState();
+}
+
+function cleanUpOnlineState() {
+    roomRef = null;
+    roomId = null;
+    myRole = null;
+    isOnlineActive = false;
+    oppConnected = false;
+    
+    if (gameMode === 'online') {
+        showOnlineView('init');
+        resetGame();
+    }
+}
+
+function handleOpponentLeave(message) {
+    alert(message);
+    if (roomRef) {
+        roomRef.off();
+    }
+    cleanUpOnlineState();
+}
+
+function copyRoomIdToClipboard() {
+    if (!roomId) return;
+    navigator.clipboard.writeText(roomId).then(() => {
+        alert("ルームIDをクリップボードにコピーしました！対戦相手に送ってください。");
+    }).catch(err => {
+        console.error("Failed to copy", err);
+    });
 }
