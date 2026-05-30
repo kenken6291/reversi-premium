@@ -512,8 +512,8 @@ body.theme-neon .btn-primary {
 
 .board-grid {
     display: grid;
-    grid-template-columns: repeat(15, 1fr);
-    grid-template-rows: repeat(15, 1fr);
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
     gap: 2px;
     width: 100%;
     height: 100%;
@@ -549,7 +549,16 @@ body.theme-neon .btn-primary {
 
 /* Available Hint (Indicator) */
 .cell.hint::before {
-    display: none; /* 五目並べでは全マスが有効な手のため、目印のドットは非表示にします */
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background-color: var(--cell-hint);
+    box-shadow: 0 0 6px var(--cell-hint);
+    animation: pulse 2s infinite ease-in-out;
+    pointer-events: none;
+    z-index: 2;
 }
 
 @keyframes pulse {

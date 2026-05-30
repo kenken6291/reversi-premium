@@ -1,5 +1,5 @@
 /**
- * Gomoku Premium - Game Logic & UI Orchestrator
+ * Reversi Premium - Game Logic & UI Orchestrator
  */
 
 // --- Firebase Config (ユーザー設定エリア) ---
@@ -15,7 +15,7 @@ const firebaseConfig = {
 };
 
 // --- Constants ---
-const BOARD_SIZE = 15;
+const BOARD_SIZE = 8;
 const EMPTY = 0;
 const BLACK = 1; // Player 1 (先手)
 const WHITE = 2; // Player 2 or AI (後手)
@@ -214,7 +214,7 @@ function toggleMute() {
 
 // --- Local Storage Stats ---
 function loadStats() {
-    const saved = localStorage.getItem('gomoku_premium_stats');
+    const saved = localStorage.getItem('reversi_premium_stats');
     if (saved) {
         try {
             gameStats = JSON.parse(saved);
@@ -226,7 +226,7 @@ function loadStats() {
 }
 
 function saveStats() {
-    localStorage.setItem('gomoku_premium_stats', JSON.stringify(gameStats));
+    localStorage.setItem('reversi_premium_stats', JSON.stringify(gameStats));
     updateStatsDOM();
 }
 
@@ -422,9 +422,62 @@ function resetTimers() {
     updateTimerDOM(timerWhiteEl, 0);
 }
 
+// --- Reversi Game Rules Helpers ---
+const DIRECTIONS = [
+    [-1, -1], [-1, 0], [-1, 1],
+    [ 0, -1],          [ 0, 1],
+    [ 1, -1], [ 1, 0], [ 1, 1]
+];
+
+function getFlippedStones(boardState, row, col, color) {
+    if (boardState[row][col] !== EMPTY) return [];
+    
+    const oppColor = color === BLACK ? WHITE : BLACK;
+    const flipped = [];
+    
+    for (const [dr, dc] of DIRECTIONS) {
+        let r = row + dr;
+        let c = col + dc;
+        const temp = [];
+        
+        while (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && boardState[r][c] === oppColor) {
+            temp.push({r, c});
+            r += dr;
+            c += dc;
+        }
+        
+        if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && boardState[r][c] === color && temp.length > 0) {
+            flipped.push(...temp);
+        }
+    }
+    
+    return flipped;
+}
+
+function isValidMove(boardState, row, col, color) {
+    return getFlippedStones(boardState, row, col, color).length > 0;
+}
+
+function getValidMoves(boardState, color) {
+    const moves = [];
+    for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+            if (isValidMove(boardState, r, c, color)) {
+                moves.push({r, c});
+            }
+        }
+    }
+    return moves;
+}
+
 // --- Game Logic ---
 function resetGame() {
     board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(EMPTY));
+    const mid = BOARD_SIZE / 2;
+    board[mid - 1][mid - 1] = WHITE;
+    board[mid][mid] = WHITE;
+    board[mid - 1][mid] = BLACK;
+    board[mid][mid - 1] = BLACK;
     turn = BLACK;
     gameActive = true;
     moveHistory = [];
@@ -508,8 +561,8 @@ function renderBoard() {
             cell.dataset.row = r;
             cell.dataset.col = c;
             
-            // 五目並べ盤の星（黒点）の位置: 3, 7, 11
-            if ((r === 3 || r === 7 || r === 11) && (c === 3 || c === 7 || c === 11)) {
+            // オセロ盤の星（黒点）の位置: 2, 5
+            if ((r === 2 || r === 5) && (c === 2 || c === 5)) {
                 cell.classList.add('marker');
             }
             
@@ -540,8 +593,8 @@ function renderBoard() {
                 cell.appendChild(wrapper);
             }
             
-            // 空いているマスなら置くことが可能
-            if (state === EMPTY && canPlay) {
+            // 空いているマスで、かつ挟める場所（合法手）なら置くことが可能
+            if (state === EMPTY && canPlay && isValidMove(board, r, c, turn)) {
                 const isAiTurn = gameMode === 'pve' && turn !== playerColor;
                 const isOnlineTurnLocked = gameMode === 'online' && (!isOnlineActive || turn !== myRole);
                 
@@ -616,7 +669,13 @@ function executeMove(row, col, isFromOnlineSync = false) {
         saveHistory();
     }
     
+    // 挟まれた石を取得して裏返す
+    const flipped = getFlippedStones(board, row, col, turn);
     board[row][col] = turn;
+    for (const f of flipped) {
+        board[f.r][f.c] = turn;
+    }
+    
     gameRecord.push({ r: row, c: col, t: turn });
     
     if (isFromOnlineSync) {
@@ -628,19 +687,32 @@ function executeMove(row, col, isFromOnlineSync = false) {
     renderBoard();
     updateUI();
     
-    // 勝敗判定
-    if (checkWin(board, row, col)) {
-        setTimeout(() => {
-            endGame(turn);
-        }, 300);
-        return;
+    // 石の数をカウント
+    let blackCount = 0;
+    let whiteCount = 0;
+    for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+            if (board[r][c] === BLACK) blackCount++;
+            if (board[r][c] === WHITE) whiteCount++;
+        }
     }
     
-    // 引き分け判定（満杯）
-    const emptyCells = board.flat().filter(cell => cell === EMPTY).length;
-    if (emptyCells === 0) {
+    // ゲーム終了判定
+    const nextPlayer = turn === BLACK ? WHITE : BLACK;
+    const nextMoves = getValidMoves(board, nextPlayer);
+    const currentMoves = getValidMoves(board, turn);
+    
+    let isOver = (nextMoves.length === 0 && currentMoves.length === 0);
+    if (blackCount === 0 || whiteCount === 0 || (blackCount + whiteCount === BOARD_SIZE * BOARD_SIZE)) {
+        isOver = true;
+    }
+    
+    if (isOver) {
         setTimeout(() => {
-            endGame(null);
+            let winner = null;
+            if (blackCount > whiteCount) winner = BLACK;
+            else if (whiteCount > blackCount) winner = WHITE;
+            endGame(winner);
         }, 300);
         return;
     }
@@ -648,8 +720,15 @@ function executeMove(row, col, isFromOnlineSync = false) {
     if (gameMode === 'online' && !isFromOnlineSync) {
         // オンライン対戦の場合、手番を交代してFirebaseへ送信
         setTimeout(() => {
-            const nextTurnColor = turn === BLACK ? WHITE : BLACK;
-            sendMoveToFirebase(row, col, nextTurnColor);
+            let nextTurnColor = nextPlayer;
+            let isPass = false;
+            if (nextMoves.length === 0) {
+                // 相手がパスの場合、ターンは自分のままでFirebaseへ送信
+                nextTurnColor = turn;
+                isPass = true;
+                alert("対戦相手に置ける場所がないため、パスになります。");
+            }
+            sendMoveToFirebase(row, col, nextTurnColor, isPass);
         }, 400);
     } else if (gameMode !== 'online') {
         // 通常の交代
@@ -662,7 +741,37 @@ function executeMove(row, col, isFromOnlineSync = false) {
 function advanceTurn() {
     if (!gameActive) return;
     
-    turn = turn === BLACK ? WHITE : BLACK;
+    const nextPlayer = turn === BLACK ? WHITE : BLACK;
+    const nextMoves = getValidMoves(board, nextPlayer);
+    
+    if (nextMoves.length > 0) {
+        // 次のプレイヤーが置ける場合は通常交代
+        turn = nextPlayer;
+    } else {
+        // 次のプレイヤーが置けない（パス）の場合
+        const currentMoves = getValidMoves(board, turn);
+        if (currentMoves.length > 0) {
+            // 自分は置けるので、ターンは自分のまま（パスを挟む）
+            const nextPlayerName = nextPlayer === BLACK ? nameBlackEl.textContent : nameWhiteEl.textContent;
+            showPassMessage(nextPlayerName);
+        } else {
+            // 両者置けない場合はゲーム終了
+            let blackCount = 0;
+            let whiteCount = 0;
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    if (board[r][c] === BLACK) blackCount++;
+                    if (board[r][c] === WHITE) whiteCount++;
+                }
+            }
+            let winner = null;
+            if (blackCount > whiteCount) winner = BLACK;
+            else if (whiteCount > blackCount) winner = WHITE;
+            endGame(winner);
+            return;
+        }
+    }
+    
     renderBoard();
     updateUI();
     
@@ -671,43 +780,36 @@ function advanceTurn() {
     }
 }
 
-// --- 勝敗判定ロジック ---
+function showPassMessage(playerName) {
+    statusMessageEl.textContent = `${playerName}がパスしました。`;
+    statusMessageEl.classList.add('pulse-highlight');
+    setTimeout(() => {
+        statusMessageEl.classList.remove('pulse-highlight');
+        updateUI();
+    }, 1500);
+}
+
+// --- 勝敗判定ロジック (オセロのゲーム終了判定として代用) ---
 function checkWin(boardState, row, col) {
-    const color = boardState[row][col];
-    if (color === EMPTY) return false;
+    const blackMoves = getValidMoves(boardState, BLACK);
+    const whiteMoves = getValidMoves(boardState, WHITE);
+    if (blackMoves.length === 0 && whiteMoves.length === 0) {
+        return true;
+    }
     
-    const directions = [
-        [0, 1],   // 横
-        [1, 0],   // 縦
-        [1, 1],   // 斜め右下
-        [1, -1]   // 斜め右上
-    ];
+    let blackCount = 0;
+    let whiteCount = 0;
+    let emptyCount = 0;
+    for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+            if (boardState[r][c] === BLACK) blackCount++;
+            else if (boardState[r][c] === WHITE) whiteCount++;
+            else emptyCount++;
+        }
+    }
     
-    for (const [dr, dc] of directions) {
-        let count = 1;
-        
-        // 正方向のスキャン
-        let r = row + dr;
-        let c = col + dc;
-        while (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && boardState[r][c] === color) {
-            count++;
-            r += dr;
-            c += dc;
-        }
-        
-        // 逆方向のスキャン
-        r = row - dr;
-        c = col - dc;
-        while (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && boardState[r][c] === color) {
-            count++;
-            r -= dr;
-            c -= dc;
-        }
-        
-        // 5つ以上並んでいれば勝利
-        if (count >= 5) {
-            return true;
-        }
+    if (blackCount === 0 || whiteCount === 0 || emptyCount === 0) {
+        return true;
     }
     
     return false;
@@ -725,269 +827,150 @@ function undoMove() {
         restoreState(prevState);
     } else {
         const prevState = moveHistory.pop();
-        gameRecord.pop();
-        restoreState(prevState);
-    }
-    
-    if (moveHistory.length === 0) {
-        btnUndo.disabled = true;
-    }
-    
-    renderBoard();
-    updateUI();
-}
+       const EVAL_MAP = [
+    [120, -20,  20,   5,   5,  20, -20, 120],
+    [-20, -40,  -5,  -5,  -5,  -5, -40, -20],
+    [ 20,  -5,  15,   3,   3,  15,  -5,  20],
+    [  5,  -5,   3,   3,   3,   3,  -5,   5],
+    [  5,  -5,   3,   3,   3,   3,  -5,   5],
+    [ 20,  -5,  15,   3,   3,  15,  -5,  20],
+    [-20, -40,  -5,  -5,  -5,  -5, -40, -20],
+    [120, -20,  20,   5,   5,  20, -20, 120]
+];
 
-function restoreState(state) {
-    board = cloneBoard(state.board);
-    turn = state.turn;
-    timerBlack = state.timerBlack;
-    timerWhite = state.timerWhite;
-    gameActive = state.gameActive;
-    
-    updateTimerDOM(timerBlackEl, timerBlack);
-    updateTimerDOM(timerWhiteEl, timerWhite);
-}
-
-// --- AI Engine ---
-function triggerAiMove() {
-    updateUI();
-    const delay = 500 + Math.random() * 600; // organicな思考時間演出
-    
-    setTimeout(() => {
-        if (!gameActive || turn === playerColor) return;
-        
-        let selectedMove = null;
-        if (aiDifficulty === 'easy') {
-            selectedMove = getEasyAiMove(board);
-        } else if (aiDifficulty === 'medium') {
-            selectedMove = getMediumAiMove(board, turn);
-        } else {
-            selectedMove = getHardAiMove(board, turn);
-        }
-        
-        if (selectedMove) {
-            executeMove(selectedMove[0], selectedMove[1]);
-        }
-    }, delay);
-}
-
-// 周囲2マス以内の空いている候補マスを抽出（全マス評価によるパフォーマンス低下防止）
-function getCandidateMoves(boardState) {
-    const candidates = [];
-    const visited = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(false));
-    let hasStones = false;
-    
-    for (let r = 0; r < BOARD_SIZE; r++) {
-        for (let c = 0; c < BOARD_SIZE; c++) {
-            if (boardState[r][c] !== EMPTY) {
-                hasStones = true;
-                for (let dr = -2; dr <= 2; dr++) {
-                    for (let dc = -2; dc <= 2; dc++) {
-                        const nr = r + dr;
-                        const nc = c + dc;
-                        if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
-                            if (boardState[nr][nc] === EMPTY && !visited[nr][nc]) {
-                                visited[nr][nc] = true;
-                                candidates.push([nr, nc]);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    // 石がまだ置かれていない場合は天元（中央）を候補にする
-    if (!hasStones) {
-        const center = Math.floor(BOARD_SIZE / 2);
-        candidates.push([center, center]);
-    }
-    
-    return candidates;
-}
-
-// 簡単AI：候補からランダムに選択
-function getEasyAiMove(boardState) {
-    const candidates = getCandidateMoves(boardState);
-    const idx = Math.floor(Math.random() * candidates.length);
-    return candidates[idx];
-}
-
-// 普通AI：1手評価値の最も高い場所を選択
-function getMediumAiMove(boardState, aiColor) {
-    const candidates = getCandidateMoves(boardState);
-    let bestMove = null;
-    let bestScore = -Infinity;
-    
-    // ランダム要素を追加するためシャッフル
-    candidates.sort(() => Math.random() - 0.5);
-    
-    for (const [r, c] of candidates) {
-        const score = evaluateCell(boardState, r, c, aiColor);
-        if (score > bestScore) {
-            bestScore = score;
-            bestMove = [r, c];
-        }
-    }
-    
-    return bestMove;
-}
-
-// 難しいAI：1手先読み（自分の一手の後、相手がとる最善手まで想定したミニマックス評価）
-function getHardAiMove(boardState, aiColor) {
-    const candidates = getCandidateMoves(boardState);
+// 盤面全体の評価関数（AI用）
+function evaluateBoard(boardState, aiColor) {
     const oppColor = aiColor === BLACK ? WHITE : BLACK;
-    
-    let bestMove = null;
-    let bestScore = -Infinity;
-    
-    candidates.sort(() => Math.random() - 0.5);
-    
-    for (const [r, c] of candidates) {
-        // シミュレーション: 自分が (r, c) に置く
-        const nextBoard = cloneBoard(boardState);
-        nextBoard[r][c] = aiColor;
-        
-        // 自分が置いた手で即勝利できるならそれを選ぶ
-        if (checkWin(nextBoard, r, c)) {
-            return [r, c];
-        }
-        
-        // 相手の反応をシミュレート
-        const oppCandidates = getCandidateMoves(nextBoard);
-        let minOppScore = Infinity;
-        
-        for (const [or, oc] of oppCandidates) {
-            const oppBoard = cloneBoard(nextBoard);
-            oppBoard[or][oc] = oppColor;
-            
-            // 相手が即座に勝利できるマスなら、自分がそこに置くことでブロックすべき
-            if (checkWin(oppBoard, or, oc)) {
-                minOppScore = -1000000; // 極めて低いスコアにしてこの手を避ける / ブロック優先
-                break;
-            }
-            
-            // 自分にとっての評価値を算出（自分の手の価値 - 相手の手の価値）
-            const myEvalScore = evaluateCell(oppBoard, r, c, aiColor) - evaluateCell(oppBoard, or, oc, oppColor) * 1.1;
-            if (myEvalScore < minOppScore) {
-                minOppScore = myEvalScore;
-            }
-        }
-        
-        // 相手が最善の対抗策（自分にとって最小評価値になる手）をとったときでも、
-        // 自分の最終評価が最大になる手を選択
-        if (minOppScore > bestScore) {
-            bestScore = minOppScore;
-            bestMove = [r, c];
-        }
-    }
-    
-    if (!bestMove && candidates.length > 0) {
-        bestMove = candidates[0];
-    }
-    return bestMove;
-}
-
-// 特定のセルに石を置いたときのスコア評価（4方向ラインスキャン）
-function evaluateCell(boardState, r, c, color) {
-    const oppColor = color === BLACK ? WHITE : BLACK;
     let score = 0;
     
-    const directions = [
-        [0, 1],   // 横
-        [1, 0],   // 縦
-        [1, 1],   // 斜め右下
-        [1, -1]   // 斜め右上
-    ];
-    
-    for (const [dr, dc] of directions) {
-        // 攻撃的な手（自分の石の並び）の評価
-        score += evaluateLine(boardState, r, c, dr, dc, color);
-        // 防御的な手（相手の石の並びを妨害）の評価、ブロックの重要性に応じて0.9倍
-        score += evaluateLine(boardState, r, c, dr, dc, oppColor) * 0.9;
+    // 1. 位置の評価
+    for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+            if (boardState[r][c] === aiColor) {
+                score += EVAL_MAP[r][c];
+            } else if (boardState[r][c] === oppColor) {
+                score -= EVAL_MAP[r][c];
+            }
+        }
     }
+    
+    // 2. 合法手の数（モビリティ）の差
+    const myMoves = getValidMoves(boardState, aiColor).length;
+    const oppMoves = getValidMoves(boardState, oppColor).length;
+    score += (myMoves - oppMoves) * 15;
     
     return score;
 }
 
-// 注目マスの前後5マスの計11マスのパターン評価
-function evaluateLine(boardState, r, c, dr, dc, color) {
-    const line = [];
-    const oppColor = color === BLACK ? WHITE : BLACK;
+// 簡単AI：合法手からランダムに選択
+function getEasyAiMove(boardState, aiColor) {
+    const moves = getValidMoves(boardState, aiColor);
+    if (moves.length === 0) return null;
+    const idx = Math.floor(Math.random() * moves.length);
+    const m = moves[idx];
+    return [m.r, m.c];
+}
+
+// 普通AI：1手評価の最も高い場所を選択
+function getMediumAiMove(boardState, aiColor) {
+    const moves = getValidMoves(boardState, aiColor);
+    if (moves.length === 0) return null;
     
-    for (let i = -5; i <= 5; i++) {
-        if (i === 0) {
-            line.push(color);
-        } else {
-            const nr = r + dr * i;
-            const nc = c + dc * i;
-            if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
-                line.push(boardState[nr][nc]);
-            } else {
-                line.push(oppColor); // 盤外は相手の石と同様（ブロック）
-            }
+    let bestMove = null;
+    let bestScore = -Infinity;
+    
+    // 同スコアの場合の偏りを防ぐためにシャッフル
+    moves.sort(() => Math.random() - 0.5);
+    
+    for (const m of moves) {
+        const flipped = getFlippedStones(boardState, m.r, m.c, aiColor);
+        // 評価値 ＝ 位置の価値 ＋ ひっくり返した枚数
+        const score = EVAL_MAP[m.r][m.c] + flipped.length * 2;
+        if (score > bestScore) {
+            bestScore = score;
+            bestMove = [m.r, m.c];
         }
     }
+    return bestMove;
+}
+
+// 難しいAI：アルファベータ法による先読み（深さ4）
+function getHardAiMove(boardState, aiColor) {
+    const depth = 4;
+    const result = alphaBeta(boardState, depth, -Infinity, Infinity, true, aiColor, aiColor);
+    return result.move ? [result.move.r, result.move.c] : getMediumAiMove(boardState, aiColor);
+}
+
+function alphaBeta(boardState, depth, alpha, beta, isMaximizing, currentTurn, aiColor) {
+    const oppColor = aiColor === BLACK ? WHITE : BLACK;
+    const playerColor = isMaximizing ? aiColor : oppColor;
+    const moves = getValidMoves(boardState, playerColor);
     
-    // スライド窓で評価
-    // 注目点（インデックス5）を含む長さ5の窓は5個
-    let maxPatternScore = 0;
-    
-    for (let start = 1; start <= 5; start++) {
-        let count = 0;
-        let emptyCount = 0;
-        let hasOpp = false;
-        
-        for (let j = 0; j < 5; j++) {
-            const val = line[start + j];
-            if (val === color) {
-                count++;
-            } else if (val === EMPTY) {
-                emptyCount++;
-            } else {
-                hasOpp = true;
-                break;
-            }
-        }
-        
-        if (hasOpp) continue; // 相手の石があれば5連は不可能
-        
-        const leftEmpty = (line[start - 1] === EMPTY);
-        const rightEmpty = (line[start + 5] === EMPTY);
-        
-        let windowScore = 0;
-        if (count === 5) {
-            windowScore = 100000; // 5連
-        } else if (count === 4) {
-            if (leftEmpty && rightEmpty) {
-                windowScore = 20000; // 活4
-            } else if (leftEmpty || rightEmpty) {
-                windowScore = 4000;  // 棒4
-            } else {
-                windowScore = 400;   // 閉じ4
-            }
-        } else if (count === 3) {
-            if (leftEmpty && rightEmpty) {
-                windowScore = 3000;  // 活3
-            } else if (leftEmpty || rightEmpty) {
-                windowScore = 500;   // 棒3
-            } else {
-                windowScore = 50;
-            }
-        } else if (count === 2) {
-            if (leftEmpty && rightEmpty) {
-                windowScore = 300;   // 活2
-            } else {
-                windowScore = 30;
-            }
-        } else if (count === 1) {
-            windowScore = 5;
-        }
-        
-        maxPatternScore = Math.max(maxPatternScore, windowScore);
+    // 深さに達したか、終局の場合
+    if (depth === 0 || (moves.length === 0 && getValidMoves(boardState, playerColor === BLACK ? WHITE : BLACK).length === 0)) {
+        return { score: evaluateBoard(boardState, aiColor), move: null };
     }
     
-    return maxPatternScore;
+    // パスの場合
+    if (moves.length === 0) {
+        // ターンを交代して先読みを継続
+        return alphaBeta(boardState, depth - 1, alpha, beta, !isMaximizing, playerColor === BLACK ? WHITE : BLACK, aiColor);
+    }
+    
+    // 探索順序を評価マップでソート
+    moves.sort((a, b) => EVAL_MAP[b.r][b.c] - EVAL_MAP[a.r][a.c]);
+    
+    let bestMove = null;
+    
+    if (isMaximizing) {
+        let maxEval = -Infinity;
+        for (const m of moves) {
+            // シミュレーション
+            const nextBoard = cloneBoard(boardState);
+            const flipped = getFlippedStones(nextBoard, m.r, m.c, playerColor);
+            nextBoard[m.r][m.c] = playerColor;
+            for (const f of flipped) {
+                nextBoard[f.r][f.c] = playerColor;
+            }
+            
+            const nextTurn = playerColor === BLACK ? WHITE : BLACK;
+            const ev = alphaBeta(nextBoard, depth - 1, alpha, beta, false, nextTurn, aiColor);
+            
+            if (ev.score > maxEval) {
+                maxEval = ev.score;
+                bestMove = m;
+            }
+            alpha = Math.max(alpha, ev.score);
+            if (beta <= alpha) {
+                break; // Betaカット
+            }
+        }
+        return { score: maxEval, move: bestMove };
+    } else {
+        let minEval = Infinity;
+        for (const m of moves) {
+            // シミュレーション
+            const nextBoard = cloneBoard(boardState);
+            const flipped = getFlippedStones(nextBoard, m.r, m.c, playerColor);
+            nextBoard[m.r][m.c] = playerColor;
+            for (const f of flipped) {
+                nextBoard[f.r][f.c] = playerColor;
+            }
+            
+            const nextTurn = playerColor === BLACK ? WHITE : BLACK;
+            const ev = alphaBeta(nextBoard, depth - 1, alpha, beta, true, nextTurn, aiColor);
+            
+            if (ev.score < minEval) {
+                minEval = ev.score;
+                bestMove = m;
+            }
+            beta = Math.min(beta, ev.score);
+            if (beta <= alpha) {
+                break; // Alphaカット
+            }
+        }
+        return { score: minEval, move: bestMove };
+    }
 }
 
 // --- End Game Handler ---
@@ -1068,9 +1051,9 @@ function endGame(winnerColor) {
     
     // 終了理由
     if (winnerColor !== null) {
-        gameEndReasonEl.textContent = `${winnerColor === BLACK ? '黒' : '白'}が5つ連続で石を並べました。`;
+        gameEndReasonEl.textContent = `石の数: 黒 ${blackCount} 石 vs 白 ${whiteCount} 石 で、${winnerColor === BLACK ? '黒' : '白'}の勝利です！`;
     } else {
-        gameEndReasonEl.textContent = "盤面がすべて埋まりました（引き分け）。";
+        gameEndReasonEl.textContent = `石の数: 黒 ${blackCount} 石 vs 白 ${whiteCount} 石 で、引き分けです。`;
     }
     
     replayMode = false;
@@ -1239,6 +1222,11 @@ function createOnlineRoom() {
     showOnlineView('waiting');
     
     const initialBoard = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(EMPTY));
+    const mid = BOARD_SIZE / 2;
+    initialBoard[mid - 1][mid - 1] = WHITE;
+    initialBoard[mid][mid] = WHITE;
+    initialBoard[mid - 1][mid] = BLACK;
+    initialBoard[mid][mid - 1] = BLACK;
     roomRef = database.ref(`rooms/${roomId}`);
     
     roomRef.set({
@@ -1329,19 +1317,19 @@ function listenToRoomChanges() {
                 board = incomingBoard;
                 renderBoard();
                 
-                if (data.lastMove) {
-                    const lastMoveR = data.lastMove.r;
-                    const lastMoveC = data.lastMove.c;
-                    const lastMoveT = myRole === BLACK ? WHITE : BLACK;
-                    
-                    if (checkWin(board, lastMoveR, lastMoveC)) {
-                        endGame(lastMoveT);
-                    } else {
-                        endGame(null); // 引き分け
+                let blackCount = 0;
+                let whiteCount = 0;
+                for (let r = 0; r < BOARD_SIZE; r++) {
+                    for (let c = 0; c < BOARD_SIZE; c++) {
+                        if (board[r][c] === BLACK) blackCount++;
+                        if (board[r][c] === WHITE) whiteCount++;
                     }
-                } else {
-                    endGame(null);
                 }
+                let winner = null;
+                if (blackCount > whiteCount) winner = BLACK;
+                else if (whiteCount > blackCount) winner = WHITE;
+                
+                endGame(winner);
                 return;
             }
             
@@ -1351,26 +1339,34 @@ function listenToRoomChanges() {
                     turn = incomingTurn;
                     
                     const oppColor = myRole === BLACK ? WHITE : BLACK;
-                    gameRecord.push({ r: data.lastMove.r, c: data.lastMove.c, t: oppColor });
                     
-                    synth.playPlaceSoundOnline();
+                    if (!data.lastMove.isPass) {
+                        gameRecord.push({ r: data.lastMove.r, c: data.lastMove.c, t: oppColor });
+                        synth.playPlaceSoundOnline();
+                    } else {
+                        const oppName = myRole === BLACK ? nameWhiteEl.textContent : nameBlackEl.textContent;
+                        showPassMessage(oppName);
+                    }
+                    
                     renderBoard();
                     updateUI();
                     
-                    // 相手の打点によって自分が負けた（相手が勝った）かチェック
+                    // 相手の打点によって終局したかチェック
                     if (checkWin(board, data.lastMove.r, data.lastMove.c)) {
                         setTimeout(() => {
-                            endGame(oppColor);
-                            // Firebaseに終局（turn = EMPTY）を通知
-                            roomRef.update({ turn: EMPTY });
-                        }, 300);
-                    }
-                    
-                    // 引き分けチェック
-                    const emptyCells = board.flat().filter(cell => cell === EMPTY).length;
-                    if (emptyCells === 0) {
-                        setTimeout(() => {
-                            endGame(null);
+                            let blackCount = 0;
+                            let whiteCount = 0;
+                            for (let r = 0; r < BOARD_SIZE; r++) {
+                                for (let c = 0; c < BOARD_SIZE; c++) {
+                                    if (board[r][c] === BLACK) blackCount++;
+                                    if (board[r][c] === WHITE) whiteCount++;
+                                }
+                            }
+                            let winner = null;
+                            if (blackCount > whiteCount) winner = BLACK;
+                            else if (whiteCount > blackCount) winner = WHITE;
+                            
+                            endGame(winner);
                             roomRef.update({ turn: EMPTY });
                         }, 300);
                     }
@@ -1385,18 +1381,12 @@ function listenToRoomChanges() {
     });
 }
 
-function sendMoveToFirebase(row, col, nextTurn) {
+function sendMoveToFirebase(row, col, nextTurn, isPass = false) {
     if (!roomRef) return;
     
-    // もし自分が打った手で勝利したなら、turnをEMPTYにしてゲームオーバーを伝える
     let finalNextTurn = nextTurn;
     if (checkWin(board, row, col)) {
         finalNextTurn = EMPTY;
-    } else {
-        const emptyCells = board.flat().filter(cell => cell === EMPTY).length;
-        if (emptyCells === 0) {
-            finalNextTurn = EMPTY;
-        }
     }
     
     roomRef.update({
@@ -1405,7 +1395,8 @@ function sendMoveToFirebase(row, col, nextTurn) {
         lastMove: {
             r: row,
             c: col,
-            t: myRole === BLACK ? 'black' : 'white'
+            t: myRole === BLACK ? 'black' : 'white',
+            isPass: isPass
         }
     });
 }
