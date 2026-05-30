@@ -1,0 +1,947 @@
+/* --- base styles & variables --- */
+:root {
+    --transition-speed: 0.3s;
+    --transition-slow: 0.6s;
+    --border-radius: 16px;
+    --border-radius-sm: 8px;
+    --font-primary: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-heading: 'Space Grotesk', sans-serif;
+    
+    /* Common sound controls */
+    --danger-color: #ff4a4a;
+    --danger-hover: #e03b3b;
+    --success-color: #2ed573;
+}
+
+/* --- Theme Config --- */
+body.theme-classic {
+    --bg-gradient: linear-gradient(135deg, #0f2c20 0%, #05100b 100%);
+    --panel-bg: rgba(15, 44, 32, 0.65);
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --accent-color: #f1c40f;
+    --accent-glow: rgba(241, 196, 15, 0.3);
+    --text-primary: #e6f3ed;
+    --text-muted: #9abfae;
+    
+    /* Board specific */
+    --board-bg: #091f16;
+    --board-inner-border: #06150e;
+    --cell-bg: #145c3b;
+    --cell-border: rgba(0, 0, 0, 0.25);
+    --cell-hover: #1e7a50;
+    --cell-hint: rgba(241, 196, 15, 0.35);
+    
+    /* Discs */
+    --disc-black-grad: radial-gradient(circle at 35% 35%, #3a3a3a 0%, #080808 80%, #000000 100%);
+    --disc-black-specular: rgba(255,255,255,0.15);
+    --disc-white-grad: radial-gradient(circle at 35% 35%, #ffffff 0%, #ececec 50%, #b5b5b5 100%);
+    --disc-white-specular: rgba(255,255,255,0.8);
+    --shadow-disc: 0 4px 8px rgba(0,0,0,0.5);
+}
+
+body.theme-glass {
+    --bg-gradient: linear-gradient(135deg, #0f0c1b 0%, #05020a 100%);
+    --panel-bg: rgba(20, 15, 40, 0.6);
+    --panel-border: rgba(255, 255, 255, 0.1);
+    --accent-color: #a855f7;
+    --accent-glow: rgba(168, 85, 247, 0.4);
+    --text-primary: #f3f0ff;
+    --text-muted: #a78bfa;
+    
+    /* Board specific */
+    --board-bg: rgba(20, 15, 40, 0.4);
+    --board-inner-border: rgba(255, 255, 255, 0.05);
+    --cell-bg: rgba(255, 255, 255, 0.06);
+    --cell-border: rgba(255, 255, 255, 0.05);
+    --cell-hover: rgba(255, 255, 255, 0.15);
+    --cell-hint: rgba(168, 85, 247, 0.4);
+    
+    /* Discs */
+    --disc-black-grad: radial-gradient(circle at 35% 35%, #4a2b85 0%, #170733 80%, #070014 100%);
+    --disc-black-specular: rgba(255,255,255,0.25);
+    --disc-white-grad: radial-gradient(circle at 35% 35%, #ffffff 0%, #eae5ff 60%, #c4b5fd 100%);
+    --disc-white-specular: rgba(255,255,255,0.8);
+    --shadow-disc: 0 6px 12px rgba(168, 85, 247, 0.2);
+}
+
+body.theme-neon {
+    --bg-gradient: linear-gradient(135deg, #030303 0%, #0a0a0f 100%);
+    --panel-bg: rgba(10, 10, 15, 0.85);
+    --panel-border: rgba(0, 242, 254, 0.2);
+    --accent-color: #00f2fe;
+    --accent-glow: rgba(0, 242, 254, 0.5);
+    --text-primary: #d1f7ff;
+    --text-muted: #6be3f9;
+    
+    /* Board specific */
+    --board-bg: #07070a;
+    --board-inner-border: #14141f;
+    --cell-bg: #0c0d14;
+    --cell-border: rgba(0, 242, 254, 0.15);
+    --cell-hover: #131726;
+    --cell-hint: rgba(255, 0, 128, 0.55);
+    
+    /* Discs */
+    --disc-black-grad: radial-gradient(circle at 35% 35%, #2a2c3a 0%, #0c0d12 80%, #000 100%);
+    --disc-black-specular: rgba(0, 242, 254, 0.4);
+    --disc-white-grad: radial-gradient(circle at 35% 35%, #ffffff 0%, #ff8aba 70%, #ff0066 100%);
+    --disc-white-specular: rgba(255, 255, 255, 0.8);
+    --shadow-disc: 0 0 10px rgba(0, 242, 254, 0.4);
+}
+
+body.theme-wood {
+    --bg-gradient: linear-gradient(135deg, #2d1c10 0%, #140d07 100%);
+    --panel-bg: rgba(54, 38, 25, 0.7);
+    --panel-border: rgba(217, 184, 153, 0.15);
+    --accent-color: #d9a05b;
+    --accent-glow: rgba(217, 160, 91, 0.35);
+    --text-primary: #f5eae0;
+    --text-muted: #d0bba7;
+    
+    /* Board specific */
+    --board-bg: #21130a;
+    --board-inner-border: #180d07;
+    --cell-bg: #402613;
+    --cell-border: #29180c;
+    --cell-hover: #4e301a;
+    --cell-hint: rgba(217, 160, 91, 0.4);
+    
+    /* Discs */
+    --disc-black-grad: radial-gradient(circle at 35% 35%, #3d2f26 0%, #150f0b 80%, #090604 100%);
+    --disc-black-specular: rgba(255,255,255,0.1);
+    --disc-white-grad: radial-gradient(circle at 35% 35%, #ffffff 0%, #f4e8dc 60%, #e0c8b2 100%);
+    --disc-white-specular: rgba(255,255,255,0.8);
+    --shadow-disc: 0 4px 6px rgba(0,0,0,0.6);
+}
+
+/* --- Layout & Base --- */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+}
+
+body {
+    font-family: var(--font-primary);
+    color: var(--text-primary);
+    background: var(--bg-gradient);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    overflow-x: hidden;
+    position: relative;
+}
+
+.glass-bg-blur {
+    position: absolute;
+    top: 10%;
+    left: 10%;
+    right: 10%;
+    bottom: 10%;
+    background: radial-gradient(circle at 50% 50%, var(--accent-glow) 0%, transparent 60%);
+    z-index: -1;
+    filter: blur(100px);
+    pointer-events: none;
+    transition: background 1s ease;
+}
+
+.app-header {
+    text-align: center;
+    padding: 2.5rem 1rem 1rem 1rem;
+    z-index: 10;
+}
+
+.app-title {
+    font-family: var(--font-heading);
+    font-size: 2.8rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    background: linear-gradient(135deg, #ffffff 0%, var(--text-muted) 50%, var(--accent-color) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.app-title span {
+    font-weight: 300;
+    color: var(--accent-color);
+    -webkit-text-fill-color: var(--accent-color);
+}
+
+.app-subtitle {
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    margin-top: 0.4rem;
+    font-weight: 300;
+}
+
+.game-container {
+    width: 100%;
+    max-width: 1100px;
+    display: flex;
+    flex-direction: row;
+    gap: 2rem;
+    padding: 1.5rem;
+    align-items: flex-start;
+    justify-content: center;
+    z-index: 10;
+}
+
+/* --- Panels (Glassmorphism) --- */
+.glass-panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: var(--border-radius);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    padding: 1.5rem;
+}
+
+/* --- Control Panel --- */
+.control-panel {
+    width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+    flex-shrink: 0;
+}
+
+.panel-title {
+    font-family: var(--font-heading);
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--panel-border);
+    padding-bottom: 0.6rem;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.control-group label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+}
+
+/* Custom Styled Select */
+.custom-select {
+    font-family: var(--font-primary);
+    font-size: 0.95rem;
+    padding: 0.75rem 1rem;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--border-radius-sm);
+    color: var(--text-primary);
+    outline: none;
+    cursor: pointer;
+    transition: all var(--transition-speed) ease;
+}
+
+.custom-select:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.custom-select option {
+    background-color: #0c0d12;
+    color: #ffffff;
+}
+
+.divider {
+    height: 1px;
+    background: var(--panel-border);
+    margin: 0.4rem 0;
+}
+
+/* Buttons */
+.action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.btn {
+    font-family: var(--font-primary);
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 0.8rem 1.2rem;
+    border: 1px solid transparent;
+    border-radius: var(--border-radius-sm);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    transition: all var(--transition-speed) ease;
+    width: 100%;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--accent-color) 0%, rgba(255,255,255,0.1) 200%);
+    color: #000;
+    font-weight: 700;
+    box-shadow: 0 4px 15px var(--accent-glow);
+}
+
+body.theme-classic .btn-primary,
+body.theme-wood .btn-primary {
+    color: #000;
+}
+body.theme-glass .btn-primary,
+body.theme-neon .btn-primary {
+    color: #000;
+    background: var(--accent-color);
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px var(--accent-glow);
+    filter: brightness(1.1);
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--panel-border);
+    color: var(--text-primary);
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--accent-color);
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+.btn:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+.btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.btn-danger {
+    color: var(--danger-color);
+}
+.btn-danger:hover:not(:disabled) {
+    background: rgba(255, 74, 74, 0.1);
+    border-color: var(--danger-color);
+    color: #ffffff;
+}
+
+/* --- Game Board Area --- */
+.game-board-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    flex-grow: 1;
+}
+
+/* Scoreboard */
+.scoreboard-container {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.player-card {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--border-radius);
+    position: relative;
+    overflow: hidden;
+    transition: all var(--transition-speed) ease;
+}
+
+.player-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: transparent;
+    transition: background var(--transition-speed) ease;
+}
+
+.player-card.active {
+    background: var(--panel-bg);
+    border-color: var(--accent-color);
+    box-shadow: 0 4px 15px var(--accent-glow);
+}
+
+.player-card.active::before {
+    background: var(--accent-color);
+}
+
+.player-avatar-wrapper {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.player-disc {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+}
+
+.player-disc.disc-black {
+    background: radial-gradient(circle at 35% 35%, #4a4a4a 0%, #000000 100%);
+    border: 1px solid rgba(0, 0, 0, 0.4);
+}
+
+.player-disc.disc-white {
+    background: radial-gradient(circle at 35% 35%, #ffffff 0%, #dedede 100%);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+/* Spinner for AI Thinking */
+.thinking-spinner {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    border: 3px solid transparent;
+    border-top-color: var(--accent-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.player-info {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+.player-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.player-score {
+    font-family: var(--font-heading);
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.1;
+}
+
+.player-timer {
+    font-family: var(--font-heading);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    padding: 0.3rem 0.6rem;
+    background: rgba(0,0,0,0.3);
+    border-radius: var(--border-radius-sm);
+    letter-spacing: 0.5px;
+}
+
+.vs-badge {
+    font-family: var(--font-heading);
+    font-weight: 800;
+    font-size: 1.2rem;
+    color: var(--accent-color);
+    text-shadow: 0 0 10px var(--accent-glow);
+    padding: 0.5rem;
+}
+
+/* Turn banner */
+.status-message-banner {
+    width: 100%;
+    padding: 0.75rem;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--border-radius-sm);
+    text-align: center;
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text-primary);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+/* --- Reversi Board --- */
+.board-wrapper {
+    perspective: 1000px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    max-width: 500px;
+}
+
+.board-frame {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    padding: 10px;
+    background: var(--board-bg);
+    border: 3px solid var(--board-inner-border);
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.6), 0 15px 35px rgba(0, 0, 0, 0.4);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.board-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    gap: 4px;
+    width: 100%;
+    height: 100%;
+}
+
+.cell {
+    background-color: var(--cell-bg);
+    border-radius: 4px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    position: relative;
+    transition: background-color var(--transition-speed) ease;
+    box-shadow: inset 0 2px 4px rgba(255,255,255,0.05), inset 0 -2px 4px rgba(0,0,0,0.2);
+}
+
+.cell:hover {
+    background-color: var(--cell-hover);
+}
+
+/* Othello Game Marker (4 Dots on Grid) */
+.cell.marker::after {
+    content: '';
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--board-inner-border);
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* Available Hint (Indicator) */
+.cell.hint::before {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: var(--cell-hint);
+    box-shadow: 0 0 8px var(--cell-hint);
+    pointer-events: none;
+    animation: pulse 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse {
+    0% { transform: scale(0.9); opacity: 0.6; }
+    50% { transform: scale(1.2); opacity: 1; }
+    100% { transform: scale(0.9); opacity: 0.6; }
+}
+
+/* Preview Disc (on hover) */
+.cell.hint:hover::after {
+    content: '';
+    position: absolute;
+    width: 80%;
+    height: 80%;
+    border-radius: 50%;
+    pointer-events: none;
+    opacity: 0.35;
+    transform: scale(0.9);
+}
+
+.cell.hint.player-black-turn:hover::after {
+    background: var(--disc-black-grad);
+    box-shadow: var(--shadow-disc);
+}
+
+.cell.hint.player-white-turn:hover::after {
+    background: var(--disc-white-grad);
+    box-shadow: var(--shadow-disc);
+}
+
+/* --- Discs (3D Flip Animation) --- */
+.disc-wrapper {
+    width: 84%;
+    height: 84%;
+    perspective: 800px;
+    transform-style: preserve-3d;
+}
+
+.disc-container {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform var(--transition-slow) cubic-bezier(0.175, 0.885, 0.32, 1.2);
+}
+
+/* Apply 3D flip */
+.disc-container.white {
+    transform: rotateY(180deg);
+}
+
+.disc-container.new-placement {
+    animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.2) forwards;
+}
+
+@keyframes popIn {
+    0% { transform: scale(0); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.disc-face {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    box-shadow: var(--shadow-disc);
+}
+
+/* 3D highlights */
+.disc-face::before {
+    content: '';
+    position: absolute;
+    top: 15%;
+    left: 15%;
+    width: 30%;
+    height: 30%;
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.disc-face.black {
+    background: var(--disc-black-grad);
+    border: 1px solid rgba(0, 0, 0, 0.6);
+}
+
+.disc-face.black::before {
+    background: var(--disc-black-specular);
+}
+
+.disc-face.white {
+    background: var(--disc-white-grad);
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    transform: rotateY(180deg); /* align face */
+}
+
+.disc-face.white::before {
+    background: var(--disc-white-specular);
+}
+
+/* --- Replay Controls --- */
+.replay-controls {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.8rem 1.5rem;
+    border-radius: var(--border-radius-sm);
+    width: 100%;
+    max-width: 500px;
+    justify-content: center;
+}
+
+.replay-label {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+
+.btn-icon {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--panel-border);
+    color: var(--text-primary);
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all var(--transition-speed) ease;
+}
+
+.btn-icon:hover {
+    background: rgba(255,255,255,0.12);
+    border-color: var(--accent-color);
+    color: #fff;
+    transform: scale(1.05);
+}
+
+.btn-icon:active {
+    transform: scale(0.95);
+}
+
+#replay-steps {
+    font-family: var(--font-heading);
+    font-size: 1rem;
+    font-weight: 700;
+    min-width: 60px;
+    text-align: center;
+}
+
+/* --- Modals (Popups) --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+    opacity: 1;
+    transition: opacity var(--transition-speed) ease;
+}
+
+.modal-content {
+    width: 90%;
+    max-width: 440px;
+    padding: 2rem;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.modal-heading {
+    font-family: var(--font-heading);
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--accent-color);
+    letter-spacing: 1px;
+}
+
+.modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+}
+
+.winner-announcement {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.final-score-board {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 1rem;
+    background: rgba(0,0,0,0.25);
+    border-radius: var(--border-radius);
+    border: 1px solid var(--panel-border);
+}
+
+.final-score-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    width: 80px;
+}
+
+.final-disc {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+}
+
+.final-score-num {
+    font-family: var(--font-heading);
+    font-size: 2.2rem;
+    font-weight: 700;
+}
+
+.final-score-vs {
+    font-family: var(--font-heading);
+    font-size: 2rem;
+    color: var(--text-muted);
+}
+
+.final-score-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.game-end-reason {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    font-weight: 300;
+}
+
+.modal-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.btn-full {
+    width: 100%;
+}
+
+/* Stats History Specific */
+.stats-tabs {
+    display: flex;
+    flex-direction: row;
+    background: rgba(0,0,0,0.2);
+    border-radius: var(--border-radius-sm);
+    padding: 3px;
+    border: 1px solid var(--panel-border);
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 0.6rem;
+    background: transparent;
+    border: none;
+    border-radius: calc(var(--border-radius-sm) - 2px);
+    color: var(--text-muted);
+    font-family: var(--font-primary);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-speed) ease;
+}
+
+.tab-btn.active {
+    background: var(--panel-bg);
+    color: var(--text-primary);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.5rem;
+}
+
+.stats-table td {
+    padding: 0.8rem 1rem;
+    border-bottom: 1px solid var(--panel-border);
+    font-size: 0.95rem;
+}
+
+.stats-table tr:last-child td {
+    border-bottom: none;
+}
+
+.stats-table td:first-child {
+    text-align: left;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.stats-table td:last-child {
+    text-align: right;
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 1.1rem;
+}
+
+/* Utility classes */
+.hidden {
+    display: none !important;
+}
+
+.animate-scale {
+    animation: scaleIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.2) forwards;
+}
+
+@keyframes scaleIn {
+    0% { transform: scale(0.85); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+/* --- Footer --- */
+.app-footer {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-top: auto;
+    font-weight: 300;
+    z-index: 10;
+}
+
+/* --- Responsive styles --- */
+@media (max-width: 900px) {
+    .game-container {
+        flex-direction: column;
+        align-items: center;
+        padding: 1rem;
+        gap: 1.5rem;
+    }
+    
+    .control-panel {
+        width: 100%;
+        max-width: 500px;
+    }
+}
+
+@media (max-width: 500px) {
+    .app-title {
+        font-size: 2.2rem;
+    }
+    
+    .scoreboard-container {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .vs-badge {
+        display: none;
+    }
+    
+    .player-card {
+        width: 100%;
+    }
+    
+    .board-frame {
+        padding: 6px;
+    }
+    
+    .board-grid {
+        gap: 2px;
+    }
+}
