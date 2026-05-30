@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reversi Premium | 美しく高度なオセロゲーム</title>
-    <meta name="description" content="3Dアニメーション効果と高度なAI（難易度3段階）を搭載した、プレミアムなブラウザ向け2人対戦オセロゲームです。ダークモードやウッド、ネオンなどのスタイリッシュなテーマも完備しています。">
+    <title>Gomoku Premium | 美しく高度な五目並べゲーム</title>
+    <meta name="description" content="3Dアニメーション効果と高度なAI（難易度3段階）を搭載した、プレミアムなブラウザ向け2人対戦五目並べゲームです。ダークモードやウッド、ネオンなどのスタイリッシュなテーマも完備しています。">
     
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -18,8 +18,8 @@
     <div class="glass-bg-blur"></div>
     
     <header class="app-header">
-        <h1 class="app-title">REVERSI<span>PREMIUM</span></h1>
-        <p class="app-subtitle">美しいビジュアルと高度なAIが融合したリバーシゲーム</p>
+        <h1 class="app-title">GOMOKU<span>PREMIUM</span></h1>
+        <p class="app-subtitle">美しいビジュアルと高度なAIが融合した五目並べゲーム</p>
     </header>
 
     <main class="game-container">
@@ -40,8 +40,8 @@
                 <label for="ai-difficulty">AI難易度</label>
                 <select id="ai-difficulty" class="custom-select">
                     <option value="easy">簡単 (ランダム)</option>
-                    <option value="medium" selected>普通 (盤面評価)</option>
-                    <option value="hard">難しい (3手先読み AI)</option>
+                    <option value="medium" selected>普通 (パターンスコア)</option>
+                    <option value="hard">難しい (高度 AI)</option>
                 </select>
             </div>
 
@@ -266,7 +266,7 @@
     </div>
 
     <footer class="app-footer">
-        <p>&copy; 2026 Reversi Premium. Built with modern web standards.</p>
+        <p>&copy; 2026 Gomoku Premium. Built with modern web standards.</p>
     </footer>
 
     <!-- Firebase App & Database Compat SDK -->

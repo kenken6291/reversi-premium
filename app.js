@@ -1,9 +1,8 @@
 /**
- * Reversi Premium - Game Logic & UI Orchestrator
+ * Gomoku Premium - Game Logic & UI Orchestrator
  */
 
 // --- Firebase Config (ユーザー設定エリア) ---
-// ※FIREBASE_SETUP.mdに従い、コピーした設定オブジェクトをここに貼り付けてください。
 const firebaseConfig = {
   apiKey: "AIzaSyCILp9Mz5-AUKfR_b42SCjv9pkO93kUC08",
   authDomain: "reversi-premium.firebaseapp.com",
@@ -16,21 +15,10 @@ const firebaseConfig = {
 };
 
 // --- Constants ---
+const BOARD_SIZE = 15;
 const EMPTY = 0;
-const BLACK = 1; // Player 1 (Classic starting)
-const WHITE = 2; // Player 2 or AI
-
-// Board Weights for AI Evaluation (Medium & Hard)
-const BOARD_WEIGHTS = [
-    [100, -35,  10,   5,   5,  10, -35, 100],
-    [-35, -45,  -5,  -5,  -5,  -5, -45, -35],
-    [ 10,  -5,  12,   3,   3,  12,  -5,  10],
-    [  5,  -5,   3,   3,   3,   3,  -5,   5],
-    [  5,  -5,   3,   3,   3,   3,  -5,   5],
-    [ 10,  -5,  12,   3,   3,  12,  -5,  10],
-    [-35, -45,  -5,  -5,  -5,  -5, -45, -35],
-    [100, -35,  10,   5,   5,  10, -35, 100]
-];
+const BLACK = 1; // Player 1 (先手)
+const WHITE = 2; // Player 2 or AI (後手)
 
 // --- Audio Synth (Web Audio API) ---
 class SoundSynth {
@@ -61,7 +49,6 @@ class SoundSynth {
                 osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
                 
                 gain.gain.setValueAtTime(volume, this.ctx.currentTime);
-                // Smooth decay
                 gain.gain.exponentialRampToValueAtTime(0.00001, this.ctx.currentTime + duration);
                 
                 osc.connect(gain);
@@ -76,27 +63,15 @@ class SoundSynth {
     }
 
     playPlaceSound() {
-        // High quality damp thud sound
-        this.playTone(180, 'triangle', 0.15, 0.6);
-        this.playTone(80, 'sine', 0.1, 0.4);
-    }
-
-    playFlipSound() {
-        // Rustle/Flip effect
-        this.playTone(320, 'sine', 0.08, 0.3);
-        this.playTone(450, 'sine', 0.08, 0.2, 0.04);
-        this.playTone(600, 'sine', 0.08, 0.1, 0.08);
+        // 石を置く「パチッ」という乾いた良い打音
+        this.playTone(400, 'triangle', 0.08, 0.5);
+        this.playTone(150, 'sine', 0.05, 0.4, 0.01);
     }
 
     playPlaceSoundOnline() {
-        // High click sound for opponent moves
-        this.playTone(300, 'sine', 0.08, 0.5);
-    }
-
-    playPassSound() {
-        // Warning sound
-        this.playTone(220, 'sawtooth', 0.2, 0.2);
-        this.playTone(180, 'sawtooth', 0.2, 0.2, 0.1);
+        // オンライン対戦相手の打音（少し異なる音）
+        this.playTone(450, 'triangle', 0.08, 0.5);
+        this.playTone(180, 'sine', 0.05, 0.4, 0.01);
     }
 
     playWinSound() {
@@ -123,14 +98,14 @@ class SoundSynth {
 const synth = new SoundSynth();
 
 // --- Game State Variables ---
-let board = Array(8).fill(null).map(() => Array(8).fill(EMPTY));
+let board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(EMPTY));
 let turn = BLACK;
 let gameMode = 'pve'; // 'pvp', 'pve', or 'online'
 let aiDifficulty = 'medium'; // 'easy', 'medium', 'hard'
-let playerColor = BLACK; // Black in AI game by default
+let playerColor = BLACK; // Black (先手) by default
 let gameActive = true;
-let moveHistory = []; // Stack of states for Undo
-let gameRecord = []; // List of actual coordinates played (for replay)
+let moveHistory = []; // Undo用のスタック
+let gameRecord = []; // 棋譜記録用
 let replayMode = false;
 let replayIndex = -1;
 let replayTimer = null;
@@ -140,7 +115,7 @@ let database = null;
 let roomRef = null;
 let roomId = null;
 let myRole = null; // BLACK or WHITE
-let isOnlineActive = false; // true when matched and playing
+let isOnlineActive = false;
 let oppConnected = false;
 
 // Timer properties
@@ -239,7 +214,7 @@ function toggleMute() {
 
 // --- Local Storage Stats ---
 function loadStats() {
-    const saved = localStorage.getItem('reversi_premium_stats');
+    const saved = localStorage.getItem('gomoku_premium_stats');
     if (saved) {
         try {
             gameStats = JSON.parse(saved);
@@ -251,7 +226,7 @@ function loadStats() {
 }
 
 function saveStats() {
-    localStorage.setItem('reversi_premium_stats', JSON.stringify(gameStats));
+    localStorage.setItem('gomoku_premium_stats', JSON.stringify(gameStats));
     updateStatsDOM();
 }
 
@@ -266,7 +241,6 @@ function updateStatsDOM() {
     document.getElementById('stat-pve-ai-wins').textContent = gameStats.pve.aiWins;
     document.getElementById('stat-pve-draws').textContent = gameStats.pve.draws;
 
-    // Online stats
     if (!gameStats.online) {
         gameStats.online = { total: 0, wins: 0, losses: 0, draws: 0 };
     }
@@ -289,7 +263,6 @@ function clearStats() {
 
 // --- Event Listeners Setup ---
 function setupEventListeners() {
-    // Buttons
     btnRestart.addEventListener('click', () => {
         synth.init();
         if (gameMode === 'online') {
@@ -307,9 +280,7 @@ function setupEventListeners() {
     });
     btnMute.addEventListener('click', toggleMute);
     
-    // Select options changes
     selectGameMode.addEventListener('change', (e) => {
-        // If we are currently active in an online game, prevent change without confirmation
         if (gameMode === 'online' && roomRef) {
             if (!confirm("オンライン対戦中の部屋から退出しますか？")) {
                 selectGameMode.value = 'online';
@@ -336,7 +307,6 @@ function setupEventListeners() {
             aiGroup.classList.add('hidden');
             colorGroup.classList.add('hidden');
             
-            // Check Firebase config validity
             if (!initFirebase()) {
                 alert("Firebase接続情報が設定されていません。FIREBASE_SETUP.md を読み、app.js の先頭で設定を行ってください。");
                 selectGameMode.value = 'pve';
@@ -348,7 +318,7 @@ function setupEventListeners() {
             
             onlineRoomGroup.classList.remove('hidden');
             showOnlineView('init');
-            resetGame(); // Init basic layout but don't start timer yet
+            resetGame();
         }
     });
     
@@ -366,7 +336,6 @@ function setupEventListeners() {
         applyTheme(e.target.value);
     });
 
-    // Modal buttons
     btnModalRestart.addEventListener('click', () => {
         resultModal.classList.add('hidden');
         if (gameMode === 'online') {
@@ -383,7 +352,6 @@ function setupEventListeners() {
     });
     btnClearStats.addEventListener('click', clearStats);
 
-    // Tab buttons in History Modal
     const tabBtns = historyModal.querySelectorAll('.tab-btn');
     tabBtns.forEach(btn => {
         btn.addEventListener('click', () => {
@@ -401,12 +369,10 @@ function setupEventListeners() {
         });
     });
 
-    // Replay controls
     btnReplayPrev.addEventListener('click', () => replayStepTo(replayIndex - 1));
     btnReplayNext.addEventListener('click', () => replayStepTo(replayIndex + 1));
     btnReplayAuto.addEventListener('click', toggleReplayAuto);
 
-    // Online Multiplayer Buttons
     btnCreateRoom.addEventListener('click', createOnlineRoom);
     btnJoinRoom.addEventListener('click', () => {
         const rId = inputRoomId.value.trim().toUpperCase();
@@ -458,15 +424,7 @@ function resetTimers() {
 
 // --- Game Logic ---
 function resetGame() {
-    // Reset core states
-    board = Array(8).fill(null).map(() => Array(8).fill(EMPTY));
-    
-    // Starting 4 discs
-    board[3][3] = WHITE;
-    board[3][4] = BLACK;
-    board[4][3] = BLACK;
-    board[4][4] = WHITE;
-    
+    board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(EMPTY));
     turn = BLACK;
     gameActive = true;
     moveHistory = [];
@@ -475,7 +433,6 @@ function resetGame() {
     replayIndex = -1;
     clearInterval(replayTimer);
     
-    // UI elements reset
     btnUndo.disabled = true;
     replayPanel.classList.add('hidden');
     
@@ -483,7 +440,6 @@ function resetGame() {
     aiDifficulty = selectAiDifficulty.value;
     playerColor = selectPlayerColor.value === 'black' ? BLACK : WHITE;
 
-    // Set player names in DOM
     if (gameMode === 'pvp') {
         nameBlackEl.textContent = 'プレイヤー1 (黒)';
         nameWhiteEl.textContent = 'プレイヤー2 (白)';
@@ -500,7 +456,6 @@ function resetGame() {
         resetTimers();
         startTimers();
     } else if (gameMode === 'online') {
-        // Online Mode Initialization
         if (myRole === BLACK) {
             nameBlackEl.textContent = 'あなた (黒)';
             nameWhiteEl.textContent = oppConnected ? '対戦相手 (白)' : '待機中... (白)';
@@ -521,18 +476,16 @@ function resetGame() {
     renderBoard();
     updateUI();
     
-    // Trigger AI if it's AI's turn to start (if player chose White)
+    // 先手AIの初手を打つ
     if (gameMode === 'pve' && playerColor === WHITE) {
         triggerAiMove();
     }
 }
 
-// Deep clone board state
 function cloneBoard(src) {
     return src.map(arr => [...arr]);
 }
 
-// Save current state for Undo
 function saveHistory() {
     moveHistory.push({
         board: cloneBoard(board),
@@ -546,21 +499,20 @@ function saveHistory() {
 
 function renderBoard() {
     boardEl.innerHTML = '';
-    const validMoves = gameActive && (!replayMode) ? getValidMoves(board, turn) : [];
+    const canPlay = gameActive && (!replayMode);
     
-    for (let r = 0; r < 8; r++) {
-        for (let c = 0; c < 8; c++) {
+    for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
             const cell = document.createElement('div');
             cell.className = 'cell';
             cell.dataset.row = r;
             cell.dataset.col = c;
             
-            // Add specific marker dots for Othello grid (usually D3, D6, F3, F6 points)
-            if ((r === 2 || r === 6) && (c === 2 || c === 6)) {
+            // 五目並べ盤の星（黒点）の位置: 3, 7, 11
+            if ((r === 3 || r === 7 || r === 11) && (c === 3 || c === 7 || c === 11)) {
                 cell.classList.add('marker');
             }
             
-            // Disc representation
             const state = board[r][c];
             if (state !== EMPTY) {
                 const wrapper = document.createElement('div');
@@ -569,7 +521,6 @@ function renderBoard() {
                 const container = document.createElement('div');
                 container.className = `disc-container ${state === WHITE ? 'white' : ''}`;
                 
-                // Add pop-in animation on the very last move (non-replay)
                 const isLastMove = gameRecord.length > 0 && 
                                    gameRecord[gameRecord.length - 1].r === r && 
                                    gameRecord[gameRecord.length - 1].c === c;
@@ -589,23 +540,16 @@ function renderBoard() {
                 cell.appendChild(wrapper);
             }
             
-            // Interactive hint dots for current active player
-            const isValid = validMoves.some(mv => mv[0] === r && mv[1] === c);
-            if (isValid && !replayMode) {
-                // If it is AI's turn, do not show visual hints to human
+            // 空いているマスなら置くことが可能
+            if (state === EMPTY && canPlay) {
                 const isAiTurn = gameMode === 'pve' && turn !== playerColor;
-                if (!isAiTurn) {
+                const isOnlineTurnLocked = gameMode === 'online' && (!isOnlineActive || turn !== myRole);
+                
+                if (!isAiTurn && !isOnlineTurnLocked) {
                     cell.classList.add('hint');
                     cell.classList.add(turn === BLACK ? 'player-black-turn' : 'player-white-turn');
                     cell.addEventListener('click', () => handleCellClick(r, c));
                 }
-            }
-            
-            // Prevent click on already placed cells
-            if (state === EMPTY && !isValid) {
-                // Clicking on empty invalid cells does nothing
-            } else if (state !== EMPTY) {
-                // Clicking on full cells does nothing
             }
 
             boardEl.appendChild(cell);
@@ -614,11 +558,11 @@ function renderBoard() {
 }
 
 function updateUI() {
-    // Count scores
+    // 置かれている石の数をカウントしてスコアボードに表示
     let blackCount = 0;
     let whiteCount = 0;
-    for (let r = 0; r < 8; r++) {
-        for (let c = 0; c < 8; c++) {
+    for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
             if (board[r][c] === BLACK) blackCount++;
             if (board[r][c] === WHITE) whiteCount++;
         }
@@ -627,7 +571,6 @@ function updateUI() {
     scoreBlackEl.textContent = blackCount;
     scoreWhiteEl.textContent = whiteCount;
     
-    // Toggle active classes
     if (turn === BLACK) {
         playerBlackCard.classList.add('active');
         playerWhiteCard.classList.remove('active');
@@ -638,7 +581,6 @@ function updateUI() {
         statusMessageEl.textContent = `${nameWhiteEl.textContent}のターンです (白)`;
     }
     
-    // AI Thinking indicator spinner
     const isAiThinking = gameActive && gameMode === 'pve' && turn !== playerColor && !replayMode;
     if (isAiThinking) {
         if (turn === BLACK) {
@@ -656,20 +598,14 @@ function updateUI() {
 function handleCellClick(row, col) {
     if (!gameActive || replayMode) return;
     
-    // In AI mode, block human clicks if it's AI's turn
-    if (gameMode === 'pve' && turn !== playerColor) {
-        return;
-    }
+    if (gameMode === 'pve' && turn !== playerColor) return;
     
-    // In Online mode, block clicks if not active or not my turn
     if (gameMode === 'online') {
         if (!isOnlineActive) {
             alert("対戦相手を待っています...");
             return;
         }
-        if (turn !== myRole) {
-            return; // Not my turn
-        }
+        if (turn !== myRole) return;
     }
     
     executeMove(row, col);
@@ -680,7 +616,7 @@ function executeMove(row, col, isFromOnlineSync = false) {
         saveHistory();
     }
     
-    const flippedDiscs = applyMove(board, row, col, turn);
+    board[row][col] = turn;
     gameRecord.push({ r: row, c: col, t: turn });
     
     if (isFromOnlineSync) {
@@ -689,179 +625,107 @@ function executeMove(row, col, isFromOnlineSync = false) {
         synth.playPlaceSound();
     }
     
-    // Animate flip of adjacent discs
     renderBoard();
     updateUI();
     
-    // Trigger CSS animation delay simulation for flips
-    if (flippedDiscs.length > 0) {
+    // 勝敗判定
+    if (checkWin(board, row, col)) {
         setTimeout(() => {
-            synth.playFlipSound();
-        }, 150);
+            endGame(turn);
+        }, 300);
+        return;
+    }
+    
+    // 引き分け判定（満杯）
+    const emptyCells = board.flat().filter(cell => cell === EMPTY).length;
+    if (emptyCells === 0) {
+        setTimeout(() => {
+            endGame(null);
+        }, 300);
+        return;
     }
     
     if (gameMode === 'online' && !isFromOnlineSync) {
-        // Send move to Firebase and let listener trigger advance
+        // オンライン対戦の場合、手番を交代してFirebaseへ送信
         setTimeout(() => {
             const nextTurnColor = turn === BLACK ? WHITE : BLACK;
-            const oppMoves = getValidMoves(board, nextTurnColor);
-            let targetNextTurn = nextTurnColor;
-            
-            if (oppMoves.length === 0) {
-                // Opponent must pass. Does current player have moves?
-                const myMoves = getValidMoves(board, turn);
-                if (myMoves.length === 0) {
-                    // Game Over
-                    targetNextTurn = EMPTY; // trigger end game state in firebase
-                } else {
-                    targetNextTurn = turn; // Pass turn back to me
-                }
-            }
-            
-            sendMoveToFirebase(row, col, targetNextTurn);
-        }, 500);
+            sendMoveToFirebase(row, col, nextTurnColor);
+        }, 400);
     } else if (gameMode !== 'online') {
-        // Proceed to next turn locally
+        // 通常の交代
         setTimeout(() => {
             advanceTurn();
-        }, 600);
+        }, 300);
     }
 }
 
 function advanceTurn() {
     if (!gameActive) return;
     
-    const nextTurn = turn === BLACK ? WHITE : BLACK;
-    const nextMoves = getValidMoves(board, nextTurn);
+    turn = turn === BLACK ? WHITE : BLACK;
+    renderBoard();
+    updateUI();
     
-    if (nextMoves.length > 0) {
-        turn = nextTurn;
-        renderBoard();
-        updateUI();
-        
-        // If AI's turn, trigger it
-        if (gameMode === 'pve' && turn !== playerColor) {
-            triggerAiMove();
-        }
-    } else {
-        // Next player has no moves, must pass
-        const currentMoves = getValidMoves(board, turn);
-        if (currentMoves.length > 0) {
-            // Pass and back to current player
-            synth.playPassSound();
-            statusMessageEl.textContent = `${nextTurn === BLACK ? '黒' : '白'}に置ける場所がないためパスします。`;
-            
-            setTimeout(() => {
-                renderBoard();
-                updateUI();
-                if (gameMode === 'pve' && turn !== playerColor) {
-                    triggerAiMove();
-                }
-            }, 1200);
-        } else {
-            // Both players have no valid moves: End Game
-            endGame();
-        }
+    if (gameMode === 'pve' && turn !== playerColor) {
+        triggerAiMove();
     }
 }
 
-// Core Reversi Rule engine: Place disc and flip matching discs. Mutates the board array.
-function applyMove(targetBoard, row, col, playerColor) {
-    const oppColor = playerColor === BLACK ? WHITE : BLACK;
-    targetBoard[row][col] = playerColor;
+// --- 勝敗判定ロジック ---
+function checkWin(boardState, row, col) {
+    const color = boardState[row][col];
+    if (color === EMPTY) return false;
     
     const directions = [
-        [-1, -1], [-1, 0], [-1, 1],
-        [0, -1],           [0, 1],
-        [1, -1],  [1, 0],  [1, 1]
+        [0, 1],   // 横
+        [1, 0],   // 縦
+        [1, 1],   // 斜め右下
+        [1, -1]   // 斜め右上
     ];
     
-    let flippedCells = [];
-    
     for (const [dr, dc] of directions) {
+        let count = 1;
+        
+        // 正方向のスキャン
         let r = row + dr;
         let c = col + dc;
-        let potentialFlips = [];
-        
-        while (r >= 0 && r < 8 && c >= 0 && c < 8 && targetBoard[r][c] === oppColor) {
-            potentialFlips.push([r, c]);
+        while (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && boardState[r][c] === color) {
+            count++;
             r += dr;
             c += dc;
         }
         
-        // If ends with our own color, flip all in between
-        if (r >= 0 && r < 8 && c >= 0 && c < 8 && targetBoard[r][c] === playerColor) {
-            for (const [fr, fc] of potentialFlips) {
-                targetBoard[fr][fc] = playerColor;
-                flippedCells.push([fr, fc]);
-            }
+        // 逆方向のスキャン
+        r = row - dr;
+        c = col - dc;
+        while (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && boardState[r][c] === color) {
+            count++;
+            r -= dr;
+            c -= dc;
+        }
+        
+        // 5つ以上並んでいれば勝利
+        if (count >= 5) {
+            return true;
         }
     }
     
-    return flippedCells;
+    return false;
 }
 
-// Return array of valid coordinate pairs [row, col]
-function getValidMoves(targetBoard, playerColor) {
-    const oppColor = playerColor === BLACK ? WHITE : BLACK;
-    const moves = [];
-    
-    const directions = [
-        [-1, -1], [-1, 0], [-1, 1],
-        [0, -1],           [0, 1],
-        [1, -1],  [1, 0],  [1, 1]
-    ];
-
-    for (let r = 0; r < 8; r++) {
-        for (let c = 0; c < 8; c++) {
-            if (targetBoard[r][c] !== EMPTY) continue;
-            
-            let isValid = false;
-            for (const [dr, dc] of directions) {
-                let checkR = r + dr;
-                let checkC = c + dc;
-                let count = 0;
-                
-                while (checkR >= 0 && checkR < 8 && checkC >= 0 && checkC < 8 && targetBoard[checkR][checkC] === oppColor) {
-                    checkR += dr;
-                    checkC += dc;
-                    count++;
-                }
-                
-                if (count > 0 && checkR >= 0 && checkR < 8 && checkC >= 0 && checkC < 8 && targetBoard[checkR][checkC] === playerColor) {
-                    isValid = true;
-                    break;
-                }
-            }
-            
-            if (isValid) {
-                moves.push([r, c]);
-            }
-        }
-    }
-    
-    return moves;
-}
-
-// Undo Logic
+// --- Undo Logic ---
 function undoMove() {
     if (moveHistory.length === 0 || replayMode) return;
     
-    // In AI Mode, we need to undo both AI and Player moves to get back to player's turn
     if (gameMode === 'pve' && moveHistory.length >= 2) {
-        // Pop last AI turn state
-        moveHistory.pop();
+        moveHistory.pop(); // AIの直前の状態
         gameRecord.pop();
-        // Pop last Player turn state
-        const prevState = moveHistory.pop();
+        const prevState = moveHistory.pop(); // プレイヤーの直前の状態
         gameRecord.pop();
-        
         restoreState(prevState);
     } else {
-        // Standard PvP single move undo
         const prevState = moveHistory.pop();
         gameRecord.pop();
-        
         restoreState(prevState);
     }
     
@@ -887,24 +751,18 @@ function restoreState(state) {
 // --- AI Engine ---
 function triggerAiMove() {
     updateUI();
-    const delay = 600 + Math.random() * 800; // Simulated thinking time for UI organic feel
+    const delay = 500 + Math.random() * 600; // organicな思考時間演出
     
     setTimeout(() => {
         if (!gameActive || turn === playerColor) return;
         
-        const moves = getValidMoves(board, turn);
-        if (moves.length === 0) {
-            advanceTurn();
-            return;
-        }
-        
         let selectedMove = null;
         if (aiDifficulty === 'easy') {
-            selectedMove = getEasyAiMove(moves);
+            selectedMove = getEasyAiMove(board);
         } else if (aiDifficulty === 'medium') {
-            selectedMove = getMediumAiMove(board, moves, turn);
+            selectedMove = getMediumAiMove(board, turn);
         } else {
-            selectedMove = getHardAiMove(board, moves, turn);
+            selectedMove = getHardAiMove(board, turn);
         }
         
         if (selectedMove) {
@@ -913,161 +771,240 @@ function triggerAiMove() {
     }, delay);
 }
 
-// Easy Mode: Pick completely random valid cell
-function getEasyAiMove(validMoves) {
-    const idx = Math.floor(Math.random() * validMoves.length);
-    return validMoves[idx];
-}
-
-// Medium Mode: Simple positional utility weight lookup
-function getMediumAiMove(currentBoard, validMoves, aiColor) {
-    let bestScore = -Infinity;
-    let bestMoves = [];
+// 周囲2マス以内の空いている候補マスを抽出（全マス評価によるパフォーマンス低下防止）
+function getCandidateMoves(boardState) {
+    const candidates = [];
+    const visited = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(false));
+    let hasStones = false;
     
-    for (const [r, c] of validMoves) {
-        const score = BOARD_WEIGHTS[r][c];
-        if (score > bestScore) {
-            bestScore = score;
-            bestMoves = [[r, c]];
-        } else if (score === bestScore) {
-            bestMoves.push([r, c]);
-        }
-    }
-    
-    // Pick randomly from equivalent scoring moves
-    return bestMoves[Math.floor(Math.random() * bestMoves.length)];
-}
-
-// Hard Mode: Minimax with Alpha-Beta Pruning (4 plies depth search)
-function getHardAiMove(currentBoard, validMoves, aiColor) {
-    let bestScore = -Infinity;
-    let bestMoves = [];
-    const depth = 4; // High response rate, reasonable lookahead
-    
-    for (const [r, c] of validMoves) {
-        // Simulate move
-        const simulatedBoard = cloneBoard(currentBoard);
-        applyMove(simulatedBoard, r, c, aiColor);
-        
-        // Evaluate subsequent outcome branch
-        const score = minimax(simulatedBoard, depth - 1, -Infinity, Infinity, false, aiColor);
-        
-        if (score > bestScore) {
-            bestScore = score;
-            bestMoves = [[r, c]];
-        } else if (score === bestScore) {
-            bestMoves.push([r, c]);
-        }
-    }
-    
-    return bestMoves[Math.floor(Math.random() * bestMoves.length)];
-}
-
-// Minimax node expansion with Alpha-Beta pruning
-function minimax(tempBoard, depth, alpha, beta, isMaxBranch, aiColor) {
-    const oppColor = aiColor === BLACK ? WHITE : BLACK;
-    const currentColor = isMaxBranch ? aiColor : oppColor;
-    const moves = getValidMoves(tempBoard, currentColor);
-    
-    // End tree evaluation
-    if (depth === 0 || moves.length === 0) {
-        return evaluateBoardState(tempBoard, aiColor);
-    }
-    
-    if (isMaxBranch) {
-        let maxVal = -Infinity;
-        for (const [r, c] of moves) {
-            const nextBoard = cloneBoard(tempBoard);
-            applyMove(nextBoard, r, c, aiColor);
-            
-            const val = minimax(nextBoard, depth - 1, alpha, beta, false, aiColor);
-            maxVal = Math.max(maxVal, val);
-            alpha = Math.max(alpha, val);
-            if (beta <= alpha) break; // Beta cut-off
-        }
-        return maxVal;
-    } else {
-        let minVal = Infinity;
-        for (const [r, c] of moves) {
-            const nextBoard = cloneBoard(tempBoard);
-            applyMove(nextBoard, r, c, oppColor);
-            
-            const val = minimax(nextBoard, depth - 1, alpha, beta, true, aiColor);
-            minVal = Math.min(minVal, val);
-            beta = Math.min(beta, val);
-            if (beta <= alpha) break; // Alpha cut-off
-        }
-        return minVal;
-    }
-}
-
-// Advanced evaluation heuristic function
-function evaluateBoardState(evalBoard, aiColor) {
-    const oppColor = aiColor === BLACK ? WHITE : BLACK;
-    let score = 0;
-    
-    let aiDiscs = 0;
-    let oppDiscs = 0;
-    
-    // Phase calculation: early, middle or late game
-    let totalDiscs = 0;
-    
-    for (let r = 0; r < 8; r++) {
-        for (let c = 0; c < 8; c++) {
-            const disc = evalBoard[r][c];
-            if (disc === EMPTY) continue;
-            
-            totalDiscs++;
-            
-            if (disc === aiColor) {
-                aiDiscs++;
-                score += BOARD_WEIGHTS[r][c];
-            } else {
-                oppDiscs++;
-                score -= BOARD_WEIGHTS[r][c];
+    for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+            if (boardState[r][c] !== EMPTY) {
+                hasStones = true;
+                for (let dr = -2; dr <= 2; dr++) {
+                    for (let dc = -2; dc <= 2; dc++) {
+                        const nr = r + dr;
+                        const nc = c + dc;
+                        if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
+                            if (boardState[nr][nc] === EMPTY && !visited[nr][nc]) {
+                                visited[nr][nc] = true;
+                                candidates.push([nr, nc]);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
     
-    // Dynamic weights depending on the game phase
-    const isEndGame = totalDiscs > 48;
+    // 石がまだ置かれていない場合は天元（中央）を候補にする
+    if (!hasStones) {
+        const center = Math.floor(BOARD_SIZE / 2);
+        candidates.push([center, center]);
+    }
     
-    if (isEndGame) {
-        // Enforce disc quantity over positional structures
-        score += (aiDiscs - oppDiscs) * 15;
-    } else {
-        // Mobility assessment: prioritize limiting opponent moves while maximizing our choices
-        const aiMobility = getValidMoves(evalBoard, aiColor).length;
-        const oppMobility = getValidMoves(evalBoard, oppColor).length;
-        score += (aiMobility - oppMobility) * 8;
+    return candidates;
+}
+
+// 簡単AI：候補からランダムに選択
+function getEasyAiMove(boardState) {
+    const candidates = getCandidateMoves(boardState);
+    const idx = Math.floor(Math.random() * candidates.length);
+    return candidates[idx];
+}
+
+// 普通AI：1手評価値の最も高い場所を選択
+function getMediumAiMove(boardState, aiColor) {
+    const candidates = getCandidateMoves(boardState);
+    let bestMove = null;
+    let bestScore = -Infinity;
+    
+    // ランダム要素を追加するためシャッフル
+    candidates.sort(() => Math.random() - 0.5);
+    
+    for (const [r, c] of candidates) {
+        const score = evaluateCell(boardState, r, c, aiColor);
+        if (score > bestScore) {
+            bestScore = score;
+            bestMove = [r, c];
+        }
+    }
+    
+    return bestMove;
+}
+
+// 難しいAI：1手先読み（自分の一手の後、相手がとる最善手まで想定したミニマックス評価）
+function getHardAiMove(boardState, aiColor) {
+    const candidates = getCandidateMoves(boardState);
+    const oppColor = aiColor === BLACK ? WHITE : BLACK;
+    
+    let bestMove = null;
+    let bestScore = -Infinity;
+    
+    candidates.sort(() => Math.random() - 0.5);
+    
+    for (const [r, c] of candidates) {
+        // シミュレーション: 自分が (r, c) に置く
+        const nextBoard = cloneBoard(boardState);
+        nextBoard[r][c] = aiColor;
+        
+        // 自分が置いた手で即勝利できるならそれを選ぶ
+        if (checkWin(nextBoard, r, c)) {
+            return [r, c];
+        }
+        
+        // 相手の反応をシミュレート
+        const oppCandidates = getCandidateMoves(nextBoard);
+        let minOppScore = Infinity;
+        
+        for (const [or, oc] of oppCandidates) {
+            const oppBoard = cloneBoard(nextBoard);
+            oppBoard[or][oc] = oppColor;
+            
+            // 相手が即座に勝利できるマスなら、自分がそこに置くことでブロックすべき
+            if (checkWin(oppBoard, or, oc)) {
+                minOppScore = -1000000; // 極めて低いスコアにしてこの手を避ける / ブロック優先
+                break;
+            }
+            
+            // 自分にとっての評価値を算出（自分の手の価値 - 相手の手の価値）
+            const myEvalScore = evaluateCell(oppBoard, r, c, aiColor) - evaluateCell(oppBoard, or, oc, oppColor) * 1.1;
+            if (myEvalScore < minOppScore) {
+                minOppScore = myEvalScore;
+            }
+        }
+        
+        // 相手が最善の対抗策（自分にとって最小評価値になる手）をとったときでも、
+        // 自分の最終評価が最大になる手を選択
+        if (minOppScore > bestScore) {
+            bestScore = minOppScore;
+            bestMove = [r, c];
+        }
+    }
+    
+    if (!bestMove && candidates.length > 0) {
+        bestMove = candidates[0];
+    }
+    return bestMove;
+}
+
+// 特定のセルに石を置いたときのスコア評価（4方向ラインスキャン）
+function evaluateCell(boardState, r, c, color) {
+    const oppColor = color === BLACK ? WHITE : BLACK;
+    let score = 0;
+    
+    const directions = [
+        [0, 1],   // 横
+        [1, 0],   // 縦
+        [1, 1],   // 斜め右下
+        [1, -1]   // 斜め右上
+    ];
+    
+    for (const [dr, dc] of directions) {
+        // 攻撃的な手（自分の石の並び）の評価
+        score += evaluateLine(boardState, r, c, dr, dc, color);
+        // 防御的な手（相手の石の並びを妨害）の評価、ブロックの重要性に応じて0.9倍
+        score += evaluateLine(boardState, r, c, dr, dc, oppColor) * 0.9;
     }
     
     return score;
 }
 
+// 注目マスの前後5マスの計11マスのパターン評価
+function evaluateLine(boardState, r, c, dr, dc, color) {
+    const line = [];
+    const oppColor = color === BLACK ? WHITE : BLACK;
+    
+    for (let i = -5; i <= 5; i++) {
+        if (i === 0) {
+            line.push(color);
+        } else {
+            const nr = r + dr * i;
+            const nc = c + dc * i;
+            if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
+                line.push(boardState[nr][nc]);
+            } else {
+                line.push(oppColor); // 盤外は相手の石と同様（ブロック）
+            }
+        }
+    }
+    
+    // スライド窓で評価
+    // 注目点（インデックス5）を含む長さ5の窓は5個
+    let maxPatternScore = 0;
+    
+    for (let start = 1; start <= 5; start++) {
+        let count = 0;
+        let emptyCount = 0;
+        let hasOpp = false;
+        
+        for (let j = 0; j < 5; j++) {
+            const val = line[start + j];
+            if (val === color) {
+                count++;
+            } else if (val === EMPTY) {
+                emptyCount++;
+            } else {
+                hasOpp = true;
+                break;
+            }
+        }
+        
+        if (hasOpp) continue; // 相手の石があれば5連は不可能
+        
+        const leftEmpty = (line[start - 1] === EMPTY);
+        const rightEmpty = (line[start + 5] === EMPTY);
+        
+        let windowScore = 0;
+        if (count === 5) {
+            windowScore = 100000; // 5連
+        } else if (count === 4) {
+            if (leftEmpty && rightEmpty) {
+                windowScore = 20000; // 活4
+            } else if (leftEmpty || rightEmpty) {
+                windowScore = 4000;  // 棒4
+            } else {
+                windowScore = 400;   // 閉じ4
+            }
+        } else if (count === 3) {
+            if (leftEmpty && rightEmpty) {
+                windowScore = 3000;  // 活3
+            } else if (leftEmpty || rightEmpty) {
+                windowScore = 500;   // 棒3
+            } else {
+                windowScore = 50;
+            }
+        } else if (count === 2) {
+            if (leftEmpty && rightEmpty) {
+                windowScore = 300;   // 活2
+            } else {
+                windowScore = 30;
+            }
+        } else if (count === 1) {
+            windowScore = 5;
+        }
+        
+        maxPatternScore = Math.max(maxPatternScore, windowScore);
+    }
+    
+    return maxPatternScore;
+}
+
 // --- End Game Handler ---
-function endGame() {
+function endGame(winnerColor) {
     gameActive = false;
     clearInterval(timerInterval);
     
-    // Count scores
+    // 石の総数を数える
     let blackCount = 0;
     let whiteCount = 0;
-    for (let r = 0; r < 8; r++) {
-        for (let c = 0; c < 8; c++) {
+    for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
             if (board[r][c] === BLACK) blackCount++;
             if (board[r][c] === WHITE) whiteCount++;
         }
     }
     
-    let winner = null;
-    if (blackCount > whiteCount) {
-        winner = BLACK;
-    } else if (whiteCount > blackCount) {
-        winner = WHITE;
-    }
-    
-    // Display results in Modal
     finalScoreBlackEl.textContent = blackCount;
     finalScoreWhiteEl.textContent = whiteCount;
     
@@ -1076,11 +1013,11 @@ function endGame() {
         finalNameWhiteEl.textContent = "白 (P2)";
         
         gameStats.pvp.total++;
-        if (winner === BLACK) {
+        if (winnerColor === BLACK) {
             winnerTextEl.textContent = "プレイヤー1 (黒) の勝ち！";
             gameStats.pvp.blackWins++;
             synth.playWinSound();
-        } else if (winner === WHITE) {
+        } else if (winnerColor === WHITE) {
             winnerTextEl.textContent = "プレイヤー2 (白) の勝ち！";
             gameStats.pvp.whiteWins++;
             synth.playWinSound();
@@ -1094,11 +1031,11 @@ function endGame() {
         finalNameWhiteEl.textContent = playerColor === WHITE ? "あなた (白)" : "AI (白)";
         
         gameStats.pve.total++;
-        if (winner === playerColor) {
+        if (winnerColor === playerColor) {
             winnerTextEl.textContent = "あなたの勝利！";
             gameStats.pve.playerWins++;
             synth.playWinSound();
-        } else if (winner !== null) {
+        } else if (winnerColor !== null) {
             winnerTextEl.textContent = "AI (コンピュータ) の勝利！";
             gameStats.pve.aiWins++;
             synth.playLoseSound();
@@ -1111,15 +1048,12 @@ function endGame() {
         finalNameBlackEl.textContent = myRole === BLACK ? "あなた (黒)" : "対戦相手 (黒)";
         finalNameWhiteEl.textContent = myRole === WHITE ? "あなた (白)" : "対戦相手 (白)";
         
-        if (!gameStats.online) {
-            gameStats.online = { total: 0, wins: 0, losses: 0, draws: 0 };
-        }
         gameStats.online.total++;
-        if (winner === myRole) {
+        if (winnerColor === myRole) {
             winnerTextEl.textContent = "あなたの勝利！";
             gameStats.online.wins++;
             synth.playWinSound();
-        } else if (winner !== null) {
+        } else if (winnerColor !== null) {
             winnerTextEl.textContent = "対戦相手の勝利！";
             gameStats.online.losses++;
             synth.playLoseSound();
@@ -1130,24 +1064,18 @@ function endGame() {
         }
     }
     
-    // Save updated stats
     saveStats();
     
-    // Reason determination
-    const emptyCount = board.flat().filter(cell => cell === EMPTY).length;
-    if (emptyCount === 0) {
-        gameEndReasonEl.textContent = "すべてのマスが埋まりました。";
-    } else if (blackCount === 0 || whiteCount === 0) {
-        gameEndReasonEl.textContent = "片方のプレイヤーの石が全滅しました。";
+    // 終了理由
+    if (winnerColor !== null) {
+        gameEndReasonEl.textContent = `${winnerColor === BLACK ? '黒' : '白'}が5つ連続で石を並べました。`;
     } else {
-        gameEndReasonEl.textContent = "両者とも置ける場所がなくなりました。";
+        gameEndReasonEl.textContent = "盤面がすべて埋まりました（引き分け）。";
     }
     
-    // Activate Replay Review Mode
     replayMode = false;
     btnUndo.disabled = true;
     
-    // Show Modal with slight delay
     setTimeout(() => {
         resultModal.classList.remove('hidden');
         statusMessageEl.textContent = "ゲーム終了。棋譜レビューが可能です。";
@@ -1158,15 +1086,13 @@ function endGame() {
 // --- Replay Review Mode Logic ---
 function setupReplayPanel() {
     replayMode = true;
-    replayIndex = gameRecord.length; // Pointing to the final board position
+    replayIndex = gameRecord.length;
     replayPanel.classList.remove('hidden');
     updateReplayUI();
 }
 
 function updateReplayUI() {
     replayStepsEl.textContent = `${replayIndex} / ${gameRecord.length}`;
-    
-    // Disable prev/next according to boundaries
     btnReplayPrev.disabled = replayIndex <= 0;
     btnReplayNext.disabled = replayIndex >= gameRecord.length;
 }
@@ -1182,26 +1108,18 @@ function replayStepTo(index) {
     updateReplayUI();
 }
 
-// Rebuild board DYNAMICALLY from move list record
 function reconstructBoardAtStep(stepCount) {
-    // Start from default initial state
-    board = Array(8).fill(null).map(() => Array(8).fill(EMPTY));
-    board[3][3] = WHITE;
-    board[3][4] = BLACK;
-    board[4][3] = BLACK;
-    board[4][4] = WHITE;
+    board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(EMPTY));
     
-    // Replay moves up to stepCount
     for (let i = 0; i < stepCount; i++) {
         const move = gameRecord[i];
-        applyMove(board, move.r, move.c, move.t);
+        board[move.r][move.c] = move.t;
     }
     
-    // Update active visual scores based on step count
     let blackCount = 0;
     let whiteCount = 0;
-    for (let r = 0; r < 8; r++) {
-        for (let c = 0; c < 8; c++) {
+    for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
             if (board[r][c] === BLACK) blackCount++;
             if (board[r][c] === WHITE) whiteCount++;
         }
@@ -1209,7 +1127,6 @@ function reconstructBoardAtStep(stepCount) {
     scoreBlackEl.textContent = blackCount;
     scoreWhiteEl.textContent = whiteCount;
     
-    // Active turn indicator
     if (stepCount < gameRecord.length) {
         turn = gameRecord[stepCount].t;
     } else {
@@ -1218,7 +1135,7 @@ function reconstructBoardAtStep(stepCount) {
     
     renderBoard();
     
-    // Visually highlight last played cell in replay mode
+    // 直前の手をハイライト
     if (stepCount > 0) {
         const lastMove = gameRecord[stepCount - 1];
         const cellEl = boardEl.querySelector(`[data-row="${lastMove.r}"][data-col="${lastMove.c}"]`);
@@ -1230,14 +1147,12 @@ function reconstructBoardAtStep(stepCount) {
 
 function toggleReplayAuto() {
     if (replayTimer) {
-        // Pause
         clearInterval(replayTimer);
         replayTimer = null;
         setReplayPlayIconState(false);
     } else {
-        // Start auto play
         if (replayIndex >= gameRecord.length) {
-            replayIndex = 0; // wrap around
+            replayIndex = 0;
         }
         setReplayPlayIconState(true);
         playNextReplayFrame();
@@ -1257,9 +1172,8 @@ function playNextReplayFrame() {
         reconstructBoardAtStep(replayIndex);
         updateReplayUI();
         synth.playPlaceSound();
-        synth.playFlipSound();
         playNextReplayFrame();
-    }, 1000);
+    }, 800);
 }
 
 function setReplayPlayIconState(isPlaying) {
@@ -1324,13 +1238,7 @@ function createOnlineRoom() {
     displayRoomId.textContent = roomId;
     showOnlineView('waiting');
     
-    // Create initial board state
-    const initialBoard = Array(8).fill(null).map(() => Array(8).fill(EMPTY));
-    initialBoard[3][3] = WHITE;
-    initialBoard[3][4] = BLACK;
-    initialBoard[4][3] = BLACK;
-    initialBoard[4][4] = WHITE;
-    
+    const initialBoard = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(EMPTY));
     roomRef = database.ref(`rooms/${roomId}`);
     
     roomRef.set({
@@ -1341,7 +1249,6 @@ function createOnlineRoom() {
         whiteActive: false,
         lastMove: null
     }).then(() => {
-        // Set disconnect listener (remove room if host disconnects before playing)
         roomRef.onDisconnect().remove();
         listenToRoomChanges();
     }).catch(err => {
@@ -1370,12 +1277,10 @@ function joinOnlineRoom(targetRoomId) {
         
         roomRef = database.ref(`rooms/${roomId}`);
         
-        // Update white player to active and change state to playing
         roomRef.update({
             whiteActive: true,
             state: 'playing'
         }).then(() => {
-            // Set disconnect listener
             roomRef.child('whiteActive').onDisconnect().set(false);
             isOnlineActive = true;
             oppConnected = true;
@@ -1393,67 +1298,83 @@ function listenToRoomChanges() {
     roomRef.on('value', snapshot => {
         const data = snapshot.val();
         if (!data) {
-            // Room was deleted
             if (isOnlineActive && gameActive) {
                 handleOpponentLeave("対戦相手が退出、または切断されました。");
             }
             return;
         }
         
-        // If state changed to closed/opponent left
         if (data.state === 'closed') {
             handleOpponentLeave("対戦相手がゲームを退出しました。");
             return;
         }
         
-        // Host waiting for opponent to join
         if (myRole === BLACK && !isOnlineActive) {
             if (data.whiteActive) {
-                // Opponent joined!
                 isOnlineActive = true;
                 oppConnected = true;
                 showOnlineView('active');
                 
-                // Keep room, but set onDisconnect to mark state as closed
                 roomRef.onDisconnect().update({ state: 'closed' });
-                
-                resetGame(); // This starts timers and updates player names
+                resetGame();
             }
         }
         
-        // Synchronize board and turn
         if (isOnlineActive) {
             const incomingBoard = data.board;
             const incomingTurn = data.turn;
             
-            // Check if game ended via Firebase trigger (turn === EMPTY/0)
             if (incomingTurn === EMPTY && gameActive) {
+                // 対戦相手が勝敗を決めたときの処理
                 board = incomingBoard;
                 renderBoard();
-                endGame();
+                
+                if (data.lastMove) {
+                    const lastMoveR = data.lastMove.r;
+                    const lastMoveC = data.lastMove.c;
+                    const lastMoveT = myRole === BLACK ? WHITE : BLACK;
+                    
+                    if (checkWin(board, lastMoveR, lastMoveC)) {
+                        endGame(lastMoveT);
+                    } else {
+                        endGame(null); // 引き分け
+                    }
+                } else {
+                    endGame(null);
+                }
                 return;
             }
             
-            // Check if opponent made a move
             if (incomingTurn !== turn) {
-                // If it's now our turn, play the opponent's move with animation
                 if (data.lastMove && data.lastMove.t !== (myRole === BLACK ? 'black' : 'white')) {
                     board = data.board;
                     turn = incomingTurn;
                     
-                    // Reconstruct gameRecord up to this move to sync replay history
-                    gameRecord.push({ r: data.lastMove.r, c: data.lastMove.c, t: myRole === BLACK ? WHITE : BLACK });
+                    const oppColor = myRole === BLACK ? WHITE : BLACK;
+                    gameRecord.push({ r: data.lastMove.r, c: data.lastMove.c, t: oppColor });
                     
                     synth.playPlaceSoundOnline();
                     renderBoard();
                     updateUI();
                     
-                    // Show flip animation
-                    setTimeout(() => {
-                        synth.playFlipSound();
-                    }, 150);
+                    // 相手の打点によって自分が負けた（相手が勝った）かチェック
+                    if (checkWin(board, data.lastMove.r, data.lastMove.c)) {
+                        setTimeout(() => {
+                            endGame(oppColor);
+                            // Firebaseに終局（turn = EMPTY）を通知
+                            roomRef.update({ turn: EMPTY });
+                        }, 300);
+                    }
+                    
+                    // 引き分けチェック
+                    const emptyCells = board.flat().filter(cell => cell === EMPTY).length;
+                    if (emptyCells === 0) {
+                        setTimeout(() => {
+                            endGame(null);
+                            roomRef.update({ turn: EMPTY });
+                        }, 300);
+                    }
                 } else {
-                    // Turn or board sync
                     board = incomingBoard;
                     turn = incomingTurn;
                     renderBoard();
@@ -1467,9 +1388,20 @@ function listenToRoomChanges() {
 function sendMoveToFirebase(row, col, nextTurn) {
     if (!roomRef) return;
     
+    // もし自分が打った手で勝利したなら、turnをEMPTYにしてゲームオーバーを伝える
+    let finalNextTurn = nextTurn;
+    if (checkWin(board, row, col)) {
+        finalNextTurn = EMPTY;
+    } else {
+        const emptyCells = board.flat().filter(cell => cell === EMPTY).length;
+        if (emptyCells === 0) {
+            finalNextTurn = EMPTY;
+        }
+    }
+    
     roomRef.update({
         board: board,
-        turn: nextTurn,
+        turn: finalNextTurn,
         lastMove: {
             r: row,
             c: col,
@@ -1481,10 +1413,8 @@ function sendMoveToFirebase(row, col, nextTurn) {
 function cleanUpOnlineRoom() {
     if (roomRef) {
         if (myRole === BLACK) {
-            // Host removes the entire room
             roomRef.remove();
         } else {
-            // Guest marks themselves as inactive, causing host listener to notice
             roomRef.update({
                 whiteActive: false,
                 state: 'closed'
@@ -1492,7 +1422,6 @@ function cleanUpOnlineRoom() {
         }
         roomRef.off();
     }
-    
     cleanUpOnlineState();
 }
 
