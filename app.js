@@ -385,6 +385,20 @@ function setupEventListeners() {
     btnCopyRoom.addEventListener('click', copyRoomIdToClipboard);
     btnCancelRoom.addEventListener('click', cleanUpOnlineRoom);
     btnLeaveRoom.addEventListener('click', cleanUpOnlineRoom);
+    
+    // イベント委譲による盤面セルクリックの処理
+    boardEl.addEventListener('click', (e) => {
+        if (!gameActive || replayMode) return;
+        
+        const cell = e.target.closest('.cell');
+        if (!cell) return;
+        
+        if (cell.classList.contains('hint')) {
+            const r = parseInt(cell.dataset.row);
+            const c = parseInt(cell.dataset.col);
+            handleCellClick(r, c);
+        }
+    });
 }
 
 function applyTheme(themeName) {
@@ -551,61 +565,100 @@ function saveHistory() {
 }
 
 function renderBoard() {
-    boardEl.innerHTML = '';
     const canPlay = gameActive && (!replayMode);
+    
+    // 盤面セルの初期作成（初回のみ）
+    if (boardEl.children.length === 0) {
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.dataset.row = r;
+                cell.dataset.col = c;
+                
+                // オセロ盤の星（黒点）の位置: 2, 5
+                if ((r === 2 || r === 5) && (c === 2 || c === 5)) {
+                    cell.classList.add('marker');
+                }
+                boardEl.appendChild(cell);
+            }
+        }
+    }
     
     for (let r = 0; r < BOARD_SIZE; r++) {
         for (let c = 0; c < BOARD_SIZE; c++) {
-            const cell = document.createElement('div');
-            cell.className = 'cell';
-            cell.dataset.row = r;
-            cell.dataset.col = c;
-            
-            // オセロ盤の星（黒点）の位置: 2, 5
-            if ((r === 2 || r === 5) && (c === 2 || c === 5)) {
-                cell.classList.add('marker');
-            }
-            
+            const cell = boardEl.children[r * BOARD_SIZE + c];
             const state = board[r][c];
+            
+            // クラスのリセット（ベースの cell と marker を維持）
+            const isMarker = (r === 2 || r === 5) && (c === 2 || c === 5);
+            cell.className = isMarker ? 'cell marker' : 'cell';
+            
+            // 石の描画更新
+            let wrapper = cell.querySelector('.disc-wrapper');
+            
             if (state !== EMPTY) {
-                const wrapper = document.createElement('div');
-                wrapper.className = 'disc-wrapper';
-                
-                const container = document.createElement('div');
-                container.className = `disc-container ${state === WHITE ? 'white' : ''}`;
-                
                 const isLastMove = gameRecord.length > 0 && 
                                    gameRecord[gameRecord.length - 1].r === r && 
                                    gameRecord[gameRecord.length - 1].c === c;
-                if (isLastMove && !replayMode) {
-                    wrapper.classList.add('new-placement');
+                                   
+                if (!wrapper) {
+                    // 石がなければ新しく生成して配置
+                    wrapper = document.createElement('div');
+                    wrapper.className = 'disc-wrapper';
+                    
+                    const container = document.createElement('div');
+                    container.className = `disc-container ${state === WHITE ? 'white' : ''}`;
+                    
+                    const blackFace = document.createElement('div');
+                    blackFace.className = 'disc-face black';
+                    
+                    const whiteFace = document.createElement('div');
+                    whiteFace.className = 'disc-face white';
+                    
+                    container.appendChild(blackFace);
+                    container.appendChild(whiteFace);
+                    wrapper.appendChild(container);
+                    cell.appendChild(wrapper);
+                    
+                    // 新規配置アニメーション
+                    if (isLastMove && !replayMode) {
+                        wrapper.classList.add('new-placement');
+                    }
+                } else {
+                    // すでに石がある場合は、状態（色）とアニメーションクラスを更新
+                    const container = wrapper.querySelector('.disc-container');
+                    
+                    // 色が白なら 'white' クラスを追加し、黒なら削除
+                    if (state === WHITE) {
+                        container.classList.add('white');
+                    } else {
+                        container.classList.remove('white');
+                    }
+                    
+                    // 前回の 'new-placement' クラスは削除しておく
+                    wrapper.classList.remove('new-placement');
+                    if (isLastMove && !replayMode) {
+                        wrapper.classList.add('new-placement');
+                    }
+                }
+            } else {
+                // 空きマスの場合は、もし古い石があれば削除
+                if (wrapper) {
+                    wrapper.remove();
                 }
                 
-                const blackFace = document.createElement('div');
-                blackFace.className = 'disc-face black';
-                
-                const whiteFace = document.createElement('div');
-                whiteFace.className = 'disc-face white';
-                
-                container.appendChild(blackFace);
-                container.appendChild(whiteFace);
-                wrapper.appendChild(container);
-                cell.appendChild(wrapper);
-            }
-            
-            // 空いているマスで、かつ挟める場所（合法手）なら置くことが可能
-            if (state === EMPTY && canPlay && isValidMove(board, r, c, turn)) {
-                const isAiTurn = gameMode === 'pve' && turn !== playerColor;
-                const isOnlineTurnLocked = gameMode === 'online' && (!isOnlineActive || turn !== myRole);
-                
-                if (!isAiTurn && !isOnlineTurnLocked) {
-                    cell.classList.add('hint');
-                    cell.classList.add(turn === BLACK ? 'player-black-turn' : 'player-white-turn');
-                    cell.addEventListener('click', () => handleCellClick(r, c));
+                // 合法手のヒント表示
+                if (canPlay && isValidMove(board, r, c, turn)) {
+                    const isAiTurn = gameMode === 'pve' && turn !== playerColor;
+                    const isOnlineTurnLocked = gameMode === 'online' && (!isOnlineActive || turn !== myRole);
+                    
+                    if (!isAiTurn && !isOnlineTurnLocked) {
+                        cell.classList.add('hint');
+                        cell.classList.add(turn === BLACK ? 'player-black-turn' : 'player-white-turn');
+                    }
                 }
             }
-
-            boardEl.appendChild(cell);
         }
     }
 }
